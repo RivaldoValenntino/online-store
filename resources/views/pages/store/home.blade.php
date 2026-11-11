@@ -3,6 +3,7 @@
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Banner;
+use App\Models\Wishlist;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -31,7 +32,7 @@ new #[Title('Beranda')] class extends Component {
     #[Computed]
     public function banners()
     {
-        return Banner::query()->active()->orderBy('sort_order')->latest()->limit(5)->get();
+        return Banner::query()->active()->with('voucher')->orderBy('sort_order')->latest()->limit(5)->get();
     }
 
     #[Computed]
@@ -62,6 +63,66 @@ new #[Title('Beranda')] class extends Component {
     {
         return Auth::guard('customer')->user()?->name ?? config('app.name');
     }
+
+    #[Computed]
+    public function wishlistedProductIds(): array
+    {
+        $customer = Auth::guard('customer')->user();
+        if (!$customer) {
+            return [];
+        }
+
+        return $customer->wishlists()->pluck('product_id')->all();
+    }
+
+    #[Computed]
+    public function wishlistCount(): int
+    {
+        $customer = Auth::guard('customer')->user();
+        if (!$customer) {
+            return 0;
+        }
+
+        return (int) $customer->wishlists()->count();
+    }
+
+    #[Computed]
+    public function unreadNotificationCount(): int
+    {
+        $customer = Auth::guard('customer')->user();
+        if (!$customer) {
+            return 0;
+        }
+
+        return (int) $customer->unreadNotifications()->count();
+    }
+
+    public function toggleWishlist(int $productId): void
+    {
+        $customer = Auth::guard('customer')->user();
+        if (!$customer) {
+            $this->redirectRoute('customer.login', navigate: true);
+            return;
+        }
+
+        $wishlist = Wishlist::where('customer_id', $customer->id)->where('product_id', $productId)->first();
+
+        if ($wishlist) {
+            $wishlist->delete();
+            $this->dispatch('notify', type: 'info', title: 'Dihapus dari Wishlist', message: 'Produk telah dihapus dari wishlist kamu.');
+        } else {
+            Wishlist::create([
+                'customer_id' => $customer->id,
+                'product_id' => $productId,
+            ]);
+            $this->dispatch('notify', type: 'success', title: 'Berhasil Disimpan', message: 'Produk berhasil disimpan ke wishlist.');
+        }
+
+        unset($this->wishlistedProductIds);
+        unset($this->wishlistCount);
+
+        $this->dispatch('wishlist-updated');
+    }
 };
 ?>
 
@@ -77,11 +138,29 @@ new #[Title('Beranda')] class extends Component {
                 </div>
 
                 <div class="flex items-center gap-1">
-                    <x-store.theme-toggle />
-
-                    {{-- <button class="btn btn-circle btn-ghost btn-sm">
+                    <a href="{{ route('store.notifications') }}" wire:navigate
+                        class="btn btn-circle btn-ghost btn-sm relative" title="Notifikasi">
                         <x-heroicon-o-bell class="h-5 w-5" />
-                    </button> --}}
+                        @if ($this->unreadNotificationCount > 0)
+                            <span
+                                class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-black text-primary-content">
+                                {{ $this->unreadNotificationCount > 99 ? '99+' : $this->unreadNotificationCount }}
+                            </span>
+                        @endif
+                    </a>
+
+                    <a href="{{ route('store.wishlist') }}" wire:navigate
+                        class="btn btn-circle btn-ghost btn-sm relative" title="Wishlist">
+                        <x-heroicon-o-heart class="h-5 w-5" />
+                        @if ($this->wishlistCount > 0)
+                            <span
+                                class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
+                                {{ $this->wishlistCount > 99 ? '99+' : $this->wishlistCount }}
+                            </span>
+                        @endif
+                    </a>
+
+                    <x-store.theme-toggle />
                 </div>
             </div>
 
@@ -169,6 +248,22 @@ new #[Title('Beranda')] class extends Component {
                                     </p>
                                 @endif
 
+                                @if ($banner->voucher)
+                                    <div x-data="{ copied: false }"
+                                        class="mt-3 inline-flex items-center gap-2 rounded-xl bg-base-100/90 px-3 py-1.5 backdrop-blur border border-dashed border-primary shadow-sm"
+                                        x-on:click.stop.prevent>
+                                        <span class="text-xs text-base-content/70">Kode:</span>
+                                        <span
+                                            class="font-mono font-bold text-xs text-primary">{{ $banner->voucher->code }}</span>
+                                        <button type="button"
+                                            x-on:click="navigator.clipboard.writeText('{{ $banner->voucher->code }}'); copied = true; setTimeout(() => copied = false, 2000)"
+                                            class="text-xs font-bold text-primary hover:underline">
+                                            <span x-show="!copied">Salin</span>
+                                            <span x-show="copied" x-cloak class="text-success">Tersalin!</span>
+                                        </button>
+                                    </div>
+                                @endif
+
                                 @if ($banner->button_text)
                                     <div class="btn btn-warning btn-sm mt-4 rounded-full">
                                         {{ $banner->button_text }}
@@ -205,6 +300,23 @@ new #[Title('Beranda')] class extends Component {
                 <div class="absolute -bottom-10 right-8 h-28 w-28 rounded-full bg-orange-300/40"></div>
             </section>
         @endif
+
+        {{-- Promo Shortcut Strip --}}
+        <div
+            class="flex items-center justify-between p-3.5 bg-gradient-to-r from-primary/10 via-base-100 to-warning/10 rounded-2xl border border-primary/20 shadow-sm">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-primary text-primary-content flex items-center justify-center">
+                    <x-heroicon-o-ticket class="h-5 w-5" />
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold">Klaim Voucher Belanja</h4>
+                    <p class="text-xs text-base-content/60">Diskon potongan harga & gratis ongkir</p>
+                </div>
+            </div>
+            <a href="{{ route('store.promos') }}" wire:navigate class="btn btn-sm btn-primary rounded-xl">
+                Lihat Promo
+            </a>
+        </div>
 
         {{-- Categories --}}
         <section>
@@ -276,7 +388,7 @@ new #[Title('Beranda')] class extends Component {
                 @forelse ($this->products as $product)
                     <a href="{{ route('store.product.detail', $product->slug) }}" wire:navigate
                         class="card overflow-hidden rounded-3xl bg-base-100 shadow-sm transition active:scale-[0.98]">
-                        <figure class="relative aspect-square bg-base-300">
+                        <figure class="relative aspect-square w-full bg-base-300">
                             @if ($product->primaryImage?->image)
                                 <img src="{{ Storage::disk('public')->url($product->primaryImage->image) }}"
                                     alt="{{ $product->name }}" class="h-full w-full object-cover">
@@ -287,10 +399,21 @@ new #[Title('Beranda')] class extends Component {
                             @endif
 
                             @if ($product->variants->count() > 0)
-                                <div class="badge badge-warning badge-sm absolute left-2 top-2">
+                                <div class="badge badge-warning badge-sm absolute left-2 top-2"
+                                    style="position: absolute; top: 8px; left: 8px;">
                                     {{ $product->variants->count() }} varian
                                 </div>
                             @endif
+
+                            <button type="button" wire:click.stop.prevent="toggleWishlist({{ $product->id }})"
+                                class="btn btn-circle btn-xs absolute top-2 right-2 z-10 bg-base-100/90 shadow transition hover:bg-base-100 active:scale-90"
+                                style="position: absolute; top: 8px; right: 8px;" aria-label="Wishlist">
+                                @if (in_array($product->id, $this->wishlistedProductIds))
+                                    <x-heroicon-s-heart class="h-3.5 w-3.5 text-rose-500" />
+                                @else
+                                    <x-heroicon-o-heart class="h-3.5 w-3.5 text-base-content/60" />
+                                @endif
+                            </button>
                         </figure>
 
                         <div class="p-3">

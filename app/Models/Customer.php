@@ -25,6 +25,7 @@ class Customer extends Authenticatable implements MustVerifyEmailContract, CanRe
 
     protected $casts = [
         'is_active' => 'boolean',
+        'unsubscribed_from_promos' => 'boolean',
         'email_verified_at' => 'datetime',
     ];
 
@@ -54,6 +55,21 @@ class Customer extends Authenticatable implements MustVerifyEmailContract, CanRe
     public function carts()
     {
         return $this->hasMany(Cart::class);
+    }
+
+    public function voucherUsages()
+    {
+        return $this->hasMany(VoucherUsage::class);
+    }
+
+    public function wishlists()
+    {
+        return $this->hasMany(Wishlist::class);
+    }
+
+    public function wishlistProducts()
+    {
+        return $this->belongsToMany(Product::class, 'wishlists')->withTimestamps();
     }
     public function sendEmailVerificationNotification(): void
     {

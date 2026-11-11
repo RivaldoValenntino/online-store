@@ -30,6 +30,16 @@ class Order extends Model
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
     ];
+    public function voucher()
+    {
+        return $this->belongsTo(Voucher::class);
+    }
+
+    public function voucherUsage()
+    {
+        return $this->hasOne(VoucherUsage::class);
+    }
+
     public function customer()
     {
         return $this->belongsTo(Customer::class);

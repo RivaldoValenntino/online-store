@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Product;
+use App\Models\Wishlist;
+use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -46,6 +48,52 @@ new #[Layout('layouts.app')] #[Title('Produk')] class extends Component {
             ->min('price');
 
         return (float) ($variantPrice ?: $product->price);
+    }
+
+    #[Computed]
+    public function wishlistedProductIds(): array
+    {
+        $customer = Auth::guard('customer')->user();
+        if (! $customer) {
+            return [];
+        }
+
+        return $customer->wishlists()->pluck('product_id')->all();
+    }
+
+    public function toggleWishlist(int $productId): void
+    {
+        $customer = Auth::guard('customer')->user();
+        if (! $customer) {
+            $this->redirectRoute('customer.login', navigate: true);
+            return;
+        }
+
+        $wishlist = Wishlist::where('customer_id', $customer->id)
+            ->where('product_id', $productId)
+            ->first();
+
+        if ($wishlist) {
+            $wishlist->delete();
+            $this->dispatch('notify',
+                type: 'info',
+                title: 'Dihapus dari Wishlist',
+                message: 'Produk telah dihapus dari wishlist kamu.'
+            );
+        } else {
+            Wishlist::create([
+                'customer_id' => $customer->id,
+                'product_id' => $productId,
+            ]);
+            $this->dispatch('notify',
+                type: 'success',
+                title: 'Berhasil Disimpan',
+                message: 'Produk berhasil disimpan ke wishlist.'
+            );
+        }
+
+        unset($this->wishlistedProductIds);
+        $this->dispatch('wishlist-updated');
     }
 };
 ?>
@@ -99,7 +147,7 @@ new #[Layout('layouts.app')] #[Title('Produk')] class extends Component {
             @foreach ($this->products as $product)
             <a href="{{ route('store.product.detail', $product->slug) }}" wire:navigate
                 class="card overflow-hidden rounded-3xl bg-base-100 shadow-sm transition active:scale-[0.98]">
-                <figure class="relative aspect-square bg-base-300">
+                <figure class="relative aspect-square w-full bg-base-300">
                     @if ($product->primaryImage?->image)
                     <img src="{{ Storage::disk('public')->url($product->primaryImage->image) }}"
                         alt="{{ $product->name }}" class="h-full w-full object-cover">
@@ -110,10 +158,21 @@ new #[Layout('layouts.app')] #[Title('Produk')] class extends Component {
                     @endif
 
                     @if ($product->variants->count() > 0)
-                    <div class="badge badge-warning badge-sm absolute left-2 top-2">
+                    <div class="badge badge-warning badge-sm absolute left-2 top-2" style="position: absolute; top: 8px; left: 8px;">
                         {{ $product->variants->count() }} varian
                     </div>
                     @endif
+
+                    <button type="button" wire:click.stop.prevent="toggleWishlist({{ $product->id }})"
+                        class="btn btn-circle btn-xs absolute top-2 right-2 z-10 bg-base-100/90 shadow transition hover:bg-base-100 active:scale-90"
+                        style="position: absolute; top: 8px; right: 8px;"
+                        aria-label="Wishlist">
+                        @if (in_array($product->id, $this->wishlistedProductIds))
+                            <x-heroicon-s-heart class="h-3.5 w-3.5 text-rose-500" />
+                        @else
+                            <x-heroicon-o-heart class="h-3.5 w-3.5 text-base-content/60" />
+                        @endif
+                    </button>
                 </figure>
 
                 <div class="p-3">

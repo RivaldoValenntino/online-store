@@ -180,8 +180,16 @@ new #[Layout('layouts.auth')] #[Title('Reset Password')] class extends Component
                     <span class="text-sm font-medium">Password Baru</span>
                 </div>
 
-                <input type="password" wire:model.live.debounce.500ms="password" placeholder="Minimal 8 karakter"
-                    class="{{ $this->inputClass('password') }}">
+                <div class="relative" x-data="{ show: false }">
+                    <input :type="show ? 'text' : 'password'" wire:model.live.debounce.500ms="password"
+                        placeholder="Minimal 8 karakter" class="{{ $this->inputClass('password') }} pr-11">
+
+                    <button type="button" @click="show = !show" tabindex="-1"
+                        class="absolute inset-y-0 right-0 flex items-center pr-3 text-base-content/50 hover:text-base-content">
+                        <x-heroicon-o-eye class="h-5 w-5" x-show="!show" x-cloak />
+                        <x-heroicon-o-eye-slash class="h-5 w-5" x-show="show" x-cloak />
+                    </button>
+                </div>
 
                 <div class="mt-1 min-h-[16px]">
                     @error('password')
@@ -198,8 +206,17 @@ new #[Layout('layouts.auth')] #[Title('Reset Password')] class extends Component
                     <span class="text-sm font-medium">Konfirmasi Password</span>
                 </div>
 
-                <input type="password" wire:model.live.debounce.500ms="password_confirmation"
-                    placeholder="Ulangi password baru" class="{{ $this->inputClass('password_confirmation') }}">
+                <div class="relative" x-data="{ show: false }">
+                    <input :type="show ? 'text' : 'password'" wire:model.live.debounce.500ms="password_confirmation"
+                        placeholder="Ulangi password baru"
+                        class="{{ $this->inputClass('password_confirmation') }} pr-11">
+
+                    <button type="button" @click="show = !show" tabindex="-1"
+                        class="absolute inset-y-0 right-0 flex items-center pr-3 text-base-content/50 hover:text-base-content">
+                        <x-heroicon-o-eye class="h-5 w-5" x-show="!show" x-cloak />
+                        <x-heroicon-o-eye-slash class="h-5 w-5" x-show="show" x-cloak />
+                    </button>
+                </div>
 
                 <div class="mt-1 min-h-[16px]">
                     @error('password_confirmation')

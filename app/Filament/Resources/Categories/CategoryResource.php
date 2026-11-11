@@ -25,6 +25,11 @@ class CategoryResource extends Resource
     protected static ?string $recordTitleAttribute = 'name';
     protected static string | UnitEnum | null $navigationGroup = 'Master';
 
+    protected static ?string $navigationLabel = 'Kategori';
+
+    protected static ?string $modelLabel = 'Kategori';
+
+    protected static ?string $pluralModelLabel = 'Kategori';
     public static function form(Schema $schema): Schema
     {
         return CategoryForm::configure($schema);

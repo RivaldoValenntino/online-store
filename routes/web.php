@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\BiteshipWebhookController;
 use App\Http\Controllers\MidtransWebhookController;
 use App\Models\Order;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -12,8 +14,17 @@ Route::livewire('/', 'pages::store.home')
     ->name('store.home');
 
 
+// Route::get('/admin/orders/{order}/invoice', function (Order $order) {
+//     return view('admin.orders.invoice', compact('order'));
+// })->middleware(['auth'])->name('admin.orders.invoice');
+
 Route::get('/admin/orders/{order}/invoice', function (Order $order) {
-    return view('admin.orders.invoice', compact('order'));
+    $order->load('items'); // eager load biar nggak N+1 pas di-loop di blade
+
+    $pdf = Pdf::loadView('admin.orders.invoice', compact('order'))
+        ->setPaper('a4', 'portrait');
+
+    return $pdf->stream("invoice-{$order->order_number}.pdf");
 })->middleware(['auth'])->name('admin.orders.invoice');
 
 Route::livewire('/products', 'pages::store.products')
@@ -38,6 +49,30 @@ Route::livewire('/checkout', 'pages::store.checkout')
 Route::livewire('/account', 'pages::store.account')
     ->name('store.account');
 
+Route::livewire('/wishlist', 'pages::store.wishlist')
+    ->name('store.wishlist')
+    ->middleware('auth:customer');
+
+Route::livewire('/notifications', 'pages::store.notifications')
+    ->name('store.notifications')
+    ->middleware('auth:customer');
+
+Route::livewire('/promos', 'pages::store.promos')
+    ->name('store.promos');
+
+Route::get('/promos/unsubscribe/{token}', function ($token) {
+    try {
+        $decoded = base64_decode($token);
+        [$customerId, $hash] = explode('|', $decoded, 2);
+        $customer = \App\Models\Customer::findOrFail($customerId);
+        if ($hash === md5($customer->email . config('app.key'))) {
+            $customer->update(['unsubscribed_from_promos' => true]);
+            return view('pages.store.unsubscribed', compact('customer'));
+        }
+    } catch (\Throwable $e) {}
+    abort(400, 'Link tidak valid atau sudah kedaluwarsa.');
+})->name('promos.unsubscribe');
+
 Route::livewire('/account/addresses', 'pages::store.addresses')
     ->name('store.addresses')
     ->middleware('auth:customer');
@@ -59,6 +94,13 @@ Route::livewire('/login', 'pages::auth.login')
 Route::livewire('/register', 'pages::auth.register')
     ->name('customer.register')
     ->middleware('guest:customer');
+
+Route::middleware('guest:customer')->group(function () {
+    Route::get('/auth/google', [GoogleAuthController::class, 'redirect'])
+        ->name('auth.google');
+    Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])
+        ->name('auth.google.callback');
+});
 
 Route::post('/logout', function (Request $request) {
     Auth::guard('customer')->logout();
@@ -122,6 +164,10 @@ Route::get('/account/orders/{order}/shipping-label', function (Order $order) {
     ->name('store.orders.shipping-label')
     ->middleware('auth:customer');
 
+Route::livewire('/account/orders/{order}/tracking', 'pages::store.order-tracking')
+    ->name('store.orders.tracking')
+    ->middleware('auth:customer');
+
 Route::livewire('/account/orders/{order}', 'pages::store.order-detail')
     ->name('store.orders.show')
     ->middleware('auth:customer');
@@ -132,9 +178,12 @@ Route::livewire('/account/orders', 'pages::store.orders')
 
 Route::get('/payment/midtrans/return', function () {
     $orderNumber = request('order_id');
+    $baseOrderNumber = preg_replace('/-PAY-.+$/', '', (string) $orderNumber);
 
     $order = Order::query()
         ->where('order_number', $orderNumber)
+        ->orWhere('order_number', $baseOrderNumber)
+        ->orWhere('midtrans_order_id', $orderNumber)
         ->first();
 
     if ($order) {

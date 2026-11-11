@@ -32,6 +32,12 @@ class BannersTable
                     ->badge()
                     ->placeholder('-'),
 
+                TextColumn::make('voucher.code')
+                    ->label('Voucher')
+                    ->badge()
+                    ->color('primary')
+                    ->placeholder('-'),
+
                 TextColumn::make('sort_order')
                     ->label('Sort')
                     ->sortable(),

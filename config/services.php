@@ -13,9 +13,16 @@ return [
     | a conventional file to locate the various service credentials.
     |
     */
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI', '/auth/google/callback'),
+    ],
+
     'midtrans' => [
         'server_key' => env('MIDTRANS_SERVER_KEY'),
         'client_key' => env('MIDTRANS_CLIENT_KEY'),
+        'signature_key' => env('MIDTRANS_SIGNATURE_KEY'),
         'is_production' => env('MIDTRANS_IS_PRODUCTION', false),
     ],
 
@@ -26,6 +33,8 @@ return [
     ],
     'biteship' => [
         'api_key' => env('BITESHIP_API_KEY'),
+        'webhook_header_key' => env('BITESHIP_WEBHOOK_HEADER_KEY', 'X-Biteship-Signature'),
+        'webhook_secret' => env('BITESHIP_WEBHOOK_SECRET'),
         'default_couriers' => env('BITESHIP_DEFAULT_COURIERS', 'jne,jnt,sicepat,anteraja'),
 
         'origin_contact_name' => env('BITESHIP_ORIGIN_CONTACT_NAME'),

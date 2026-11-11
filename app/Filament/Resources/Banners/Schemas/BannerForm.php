@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\Banners\Schemas;
 
+use App\Models\Voucher;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
@@ -57,6 +59,14 @@ class BannerForm
                             ->label('Button URL')
                             ->placeholder('/products')
                             ->maxLength(255),
+
+                        Select::make('voucher_id')
+                            ->label('Tautkan Voucher Promo')
+                            ->relationship('voucher', 'code')
+                            ->searchable()
+                            ->preload()
+                            ->nullable()
+                            ->helperText('Pilih jika banner ini mempromosikan kode voucher tertentu.'),
                     ])
                     ->columns(2)
                     ->columnSpanFull(),

@@ -3,15 +3,31 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Services\BiteshipSettings;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class BiteshipWebhookController extends Controller
 {
-    public function __invoke(Request $request)
+    public function __invoke(Request $request): JsonResponse
     {
         logger()->info('BITESHIP WEBHOOK HIT', [
             'payload' => $request->all(),
+            'header_key' => $this->getWebhookHeaderKey(),
+            'signature_received' => filled($this->getIncomingSignature($request)),
         ]);
+
+        if (! $this->validateSignature($request)) {
+            logger()->warning('BITESHIP WEBHOOK REJECTED: Invalid or missing signature header', [
+                'expected_header' => $this->getWebhookHeaderKey(),
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthorized: Invalid or missing webhook signature.',
+            ], 401);
+        }
 
         $payload = $request->all();
 
@@ -94,6 +110,91 @@ class BiteshipWebhookController extends Controller
         }
 
         return response()->json(['message' => 'OK']);
+    }
+
+    /**
+     * Validasi signature header webhook dari Biteship.
+     */
+    private function validateSignature(Request $request): bool
+    {
+        $expectedSecret = $this->getWebhookSecret();
+
+        // Jika secret belum diset di server
+        if (blank($expectedSecret)) {
+            if (app()->isProduction()) {
+                logger()->error('BITESHIP WEBHOOK REJECTED: Webhook secret is not configured in production.');
+                return false;
+            }
+
+            logger()->warning('BITESHIP WEBHOOK WARNING: BITESHIP_WEBHOOK_SECRET is not configured.');
+            return true;
+        }
+
+        $incomingSignature = $this->getIncomingSignature($request);
+
+        if (blank($incomingSignature)) {
+            return false;
+        }
+
+        // 1. Validasi token secret langsung (standard Biteship Dashboard Header Secret)
+        if (hash_equals((string) $expectedSecret, (string) $incomingSignature)) {
+            return true;
+        }
+
+        // 2. Validasi format Bearer token jika header dikirim dengan format "Bearer <secret>"
+        if (str_starts_with((string) $incomingSignature, 'Bearer ')) {
+            $token = substr((string) $incomingSignature, 7);
+            if (hash_equals((string) $expectedSecret, $token)) {
+                return true;
+            }
+        }
+
+        // 3. Validasi HMAC-SHA256 jika signature berupa hash payload
+        $rawContent = $request->getContent();
+        if (filled($rawContent)) {
+            $calculatedHmac = hash_hmac('sha256', $rawContent, (string) $expectedSecret);
+            if (hash_equals($calculatedHmac, (string) $incomingSignature)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Nama header yang digunakan untuk signature webhook.
+     */
+    private function getWebhookHeaderKey(): string
+    {
+        return (string) app(BiteshipSettings::class)->get(
+            'webhook_header_key',
+            config('services.biteship.webhook_header_key', 'X-Biteship-Signature')
+        );
+    }
+
+    /**
+     * Nilai secret yang diharapkan dari Biteship.
+     */
+    private function getWebhookSecret(): ?string
+    {
+        return app(BiteshipSettings::class)->get(
+            'webhook_secret',
+            config('services.biteship.webhook_secret')
+        );
+    }
+
+    /**
+     * Ambil signature yang diterima dari header request.
+     */
+    private function getIncomingSignature(Request $request): ?string
+    {
+        $headerKey = $this->getWebhookHeaderKey();
+
+        return $request->header($headerKey)
+            ?? $request->header(str_replace('_', '-', $headerKey))
+            ?? $request->header('X-Biteship-Signature')
+            ?? $request->header('Biteship-Signature')
+            ?? $request->header('Signature');
     }
 
     private function mapShippingStatus(string $biteshipStatus, Order $order): array

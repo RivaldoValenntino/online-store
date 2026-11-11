@@ -5,6 +5,8 @@ namespace App\Jobs;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Voucher;
+use App\Models\VoucherUsage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -58,6 +60,14 @@ class ExpireOrderJob implements ShouldQueue
                             ->lockForUpdate()
                             ->increment('stock', $item->qty);
                     }
+                }
+            }
+
+            if ($order->voucher_id) {
+                VoucherUsage::where('order_id', $order->id)->delete();
+                $voucher = Voucher::whereKey($order->voucher_id)->lockForUpdate()->first();
+                if ($voucher && $voucher->total_used > 0) {
+                    $voucher->decrement('total_used');
                 }
             }
 

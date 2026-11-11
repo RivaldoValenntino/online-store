@@ -34,6 +34,11 @@ class Banner extends Model
         });
     }
 
+    public function voucher()
+    {
+        return $this->belongsTo(Voucher::class);
+    }
+
     public function scopeActive($query)
     {
         return $query

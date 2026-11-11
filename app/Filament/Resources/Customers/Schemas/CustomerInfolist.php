@@ -15,6 +15,11 @@ class CustomerInfolist
                 TextEntry::make('name'),
                 TextEntry::make('email')
                     ->label('Email address'),
+                TextEntry::make('google_id')
+                    ->label('Google Account')
+                    ->formatStateUsing(fn ($state) => $state ? 'Terhubung (Google)' : 'Email / Password')
+                    ->badge()
+                    ->color(fn ($state) => $state ? 'success' : 'gray'),
                 TextEntry::make('phone')
                     ->placeholder('-'),
                 IconEntry::make('is_active')

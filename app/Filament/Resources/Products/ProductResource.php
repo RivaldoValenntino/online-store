@@ -25,7 +25,13 @@ class ProductResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
-    protected static string |UnitEnum|null $navigationGroup = 'Content';
+    protected static string |UnitEnum|null $navigationGroup = 'Konten';
+
+    protected static ?string $navigationLabel = 'Produk';
+
+    protected static ?string $modelLabel = 'Produk';
+
+    protected static ?string $pluralModelLabel = 'Produk';
 
     public static function form(Schema $schema): Schema
     {

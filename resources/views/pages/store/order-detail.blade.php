@@ -7,6 +7,8 @@ use Livewire\Component;
 use Illuminate\Support\Facades\DB;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Voucher;
+use App\Models\VoucherUsage;
 use App\Services\MidtransService;
 new #[Title('Detail Pesanan')] class extends Component {
     public Order $order;
@@ -167,6 +169,14 @@ new #[Title('Detail Pesanan')] class extends Component {
                 }
             }
 
+            if ($order->voucher_id) {
+                VoucherUsage::where('order_id', $order->id)->delete();
+                $voucher = Voucher::whereKey($order->voucher_id)->lockForUpdate()->first();
+                if ($voucher && $voucher->total_used > 0) {
+                    $voucher->decrement('total_used');
+                }
+            }
+
             $order->update([
                 'status' => 'cancelled',
                 'payment_status' => 'cancelled',
@@ -230,7 +240,7 @@ new #[Title('Detail Pesanan')] class extends Component {
 <div class="min-h-screen bg-base-200 pb-24">
     <header class="sticky top-0 z-40 border-b border-base-300 bg-base-100/95 backdrop-blur">
         <div class="flex items-center gap-3 p-4">
-            <a href="{{ route('store.account') }}" wire:navigate class="btn btn-circle btn-sm btn-ghost">
+            <a href="{{ route('store.orders') }}" wire:navigate class="btn btn-circle btn-sm btn-ghost">
                 <x-heroicon-o-chevron-left class="h-5 w-5" />
             </a>
 
@@ -432,6 +442,14 @@ new #[Title('Detail Pesanan')] class extends Component {
                     Estimasi {{ $order->shipping_etd ?: '-' }}
                 </p>
             </div>
+
+            @if ($order->payment_status === 'paid')
+                <a href="{{ route('store.orders.tracking', $order) }}" wire:navigate
+                    class="btn btn-outline btn-primary mt-3 w-full rounded-full">
+                    <x-heroicon-o-truck class="h-5 w-5" />
+                    Tracking Paket
+                </a>
+            @endif
         </section>
 
         <section class="rounded-[2rem] bg-base-100 p-4 shadow-sm">
@@ -478,10 +496,17 @@ new #[Title('Detail Pesanan')] class extends Component {
                     <span class="font-bold">Rp {{ number_format($order->shipping_cost, 0, ',', '.') }}</span>
                 </div>
 
-                <div class="flex justify-between">
-                    <span class="text-base-content/60">Diskon</span>
-                    <span class="font-bold">Rp {{ number_format($order->discount, 0, ',', '.') }}</span>
-                </div>
+                @if ($order->discount > 0)
+                    <div class="flex justify-between text-success">
+                        <span class="flex items-center gap-1">
+                            Diskon
+                            @if ($order->voucher_code)
+                                <span class="badge badge-xs badge-primary font-mono font-bold">{{ $order->voucher_code }}</span>
+                            @endif
+                        </span>
+                        <span class="font-bold">- Rp {{ number_format($order->discount, 0, ',', '.') }}</span>
+                    </div>
+                @endif
 
                 <div class="border-t border-base-200 pt-2">
                     <div class="flex justify-between">

@@ -149,4 +149,12 @@ class BiteshipService
             ->throw()
             ->json();
     }
+
+    public function getOrder(string $biteshipOrderId): array
+    {
+        return $this->client()
+            ->get("/v1/orders/{$biteshipOrderId}")
+            ->throw()
+            ->json();
+    }
 }

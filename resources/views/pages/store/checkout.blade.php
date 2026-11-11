@@ -7,6 +7,8 @@ use App\Models\OrderItem;
 use App\Jobs\ExpireOrderJob;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Voucher;
+use App\Services\VoucherService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -21,6 +23,11 @@ new #[Title('Checkout')] class extends Component {
     public ?string $checkoutError = null;
     public ?string $selectedShippingKey = null;
     public array $shippingOptions = [];
+
+    public string $voucherInput = '';
+    public ?string $appliedVoucherCode = null;
+    public ?string $voucherError = null;
+    public ?string $voucherSuccess = null;
 
     public function mount(): void
     {
@@ -94,15 +101,94 @@ new #[Title('Checkout')] class extends Component {
     }
 
     #[Computed]
+    public function voucherValidation(): array
+    {
+        if (! $this->appliedVoucherCode) {
+            return [
+                'valid' => false,
+                'message' => null,
+                'voucher' => null,
+                'product_discount' => 0.0,
+                'shipping_discount' => 0.0,
+                'total_discount' => 0.0,
+            ];
+        }
+
+        return app(VoucherService::class)->validateAndCalculate(
+            $this->appliedVoucherCode,
+            $this->customer,
+            $this->subtotal,
+            $this->shippingCost,
+            $this->items
+        );
+    }
+
+    #[Computed]
+    public function appliedVoucher(): ?Voucher
+    {
+        return $this->voucherValidation['voucher'] ?? null;
+    }
+
+    #[Computed]
+    public function productDiscount(): float
+    {
+        return (float) ($this->voucherValidation['product_discount'] ?? 0);
+    }
+
+    #[Computed]
+    public function shippingDiscount(): float
+    {
+        return (float) ($this->voucherValidation['shipping_discount'] ?? 0);
+    }
+
+    #[Computed]
     public function discount(): float
     {
-        return 0;
+        return (float) ($this->voucherValidation['total_discount'] ?? 0);
     }
 
     #[Computed]
     public function grandTotal(): float
     {
-        return $this->subtotal + $this->shippingCost - $this->discount;
+        return max(0, $this->subtotal + $this->shippingCost - $this->discount);
+    }
+
+    public function applyVoucher(): void
+    {
+        $this->voucherError = null;
+        $this->voucherSuccess = null;
+
+        $code = strtoupper(trim($this->voucherInput));
+        if ($code === '') {
+            $this->voucherError = 'Silakan masukkan kode voucher.';
+            return;
+        }
+
+        $result = app(VoucherService::class)->validateAndCalculate(
+            $code,
+            $this->customer,
+            $this->subtotal,
+            $this->shippingCost,
+            $this->items
+        );
+
+        if (! $result['valid']) {
+            $this->voucherError = $result['message'];
+            $this->appliedVoucherCode = null;
+            return;
+        }
+
+        $this->appliedVoucherCode = $result['voucher']->code;
+        $this->voucherSuccess = $result['message'];
+        $this->voucherInput = '';
+    }
+
+    public function removeVoucher(): void
+    {
+        $this->appliedVoucherCode = null;
+        $this->voucherError = null;
+        $this->voucherSuccess = null;
+        $this->voucherInput = '';
     }
 
     public function shippingAddressText(Address $address): string
@@ -139,6 +225,12 @@ new #[Title('Checkout')] class extends Component {
             $order = DB::transaction(function () {
                 $address = $this->selectedAddress;
                 $shipping = $this->selectedShipping();
+
+                $appliedVoucher = $this->appliedVoucher;
+                $productDiscount = $this->productDiscount;
+                $shippingDiscount = $this->shippingDiscount;
+                $totalDiscount = $this->discount;
+
                 $order = Order::create([
                     'customer_id' => $this->customer->id,
                     'address_id' => $address->id,
@@ -146,7 +238,12 @@ new #[Title('Checkout')] class extends Component {
 
                     'subtotal' => $this->subtotal,
                     'shipping_cost' => $this->shippingCost,
-                    'discount' => $this->discount,
+                    'discount' => $totalDiscount,
+                    'product_discount' => $productDiscount,
+                    'shipping_discount' => $shippingDiscount,
+                    'voucher_id' => $appliedVoucher?->id,
+                    'voucher_code' => $appliedVoucher?->code,
+                    'voucher_discount_type' => $appliedVoucher?->type,
                     'grand_total' => $this->grandTotal,
 
                     'status' => 'pending_payment',
@@ -165,6 +262,16 @@ new #[Title('Checkout')] class extends Component {
                     'shipping_etd' => $shipping['etd'],
                     'shipping_provider' => 'biteship',
                 ]);
+
+                if ($appliedVoucher) {
+                    app(VoucherService::class)->applyVoucherToOrder(
+                        $order,
+                        $appliedVoucher,
+                        $this->customer,
+                        $productDiscount,
+                        $shippingDiscount
+                    );
+                }
                 ExpireOrderJob::dispatch($order->id)->delay($order->payment_expires_at);
                 foreach ($this->items as $item) {
                     if ($item->product_variant_id) {
@@ -490,6 +597,75 @@ new #[Title('Checkout')] class extends Component {
                     placeholder="Contoh: kirim sore hari, packing rapi, dll."></textarea>
             </section>
 
+            {{-- Voucher / Promo Code --}}
+            <section class="rounded-[2rem] bg-base-100 p-4 shadow-sm">
+                <div class="mb-3 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <x-heroicon-o-ticket class="h-5 w-5 text-primary" />
+                        <h2 class="font-black text-sm md:text-base">Voucher Promo</h2>
+                    </div>
+                    <a href="{{ route('store.promos') }}" wire:navigate class="text-xs text-primary font-semibold hover:underline">
+                        Lihat Voucher
+                    </a>
+                </div>
+
+                @if($this->appliedVoucher)
+                    <div class="flex items-center justify-between p-3.5 bg-primary/10 border border-primary/30 rounded-2xl">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <div class="w-8 h-8 rounded-xl bg-primary text-primary-content flex items-center justify-center shrink-0">
+                                <x-heroicon-o-check class="h-4 w-4" />
+                            </div>
+                            <div class="min-w-0">
+                                <p class="font-mono font-bold text-xs md:text-sm text-primary truncate">
+                                    {{ $this->appliedVoucher->code }}
+                                </p>
+                                <p class="text-[11px] text-base-content/70 truncate">
+                                    {{ $this->appliedVoucher->name }} (Hemat Rp {{ number_format($this->discount, 0, ',', '.') }})
+                                </p>
+                            </div>
+                        </div>
+
+                        <button type="button" wire:click="removeVoucher" class="btn btn-ghost btn-xs text-error font-semibold hover:bg-error/10 rounded-lg">
+                            Hapus
+                        </button>
+                    </div>
+
+                    @if($voucherSuccess)
+                        <p class="text-xs text-success mt-2 font-medium flex items-center gap-1">
+                            <x-heroicon-o-check-circle class="h-4 w-4 shrink-0" />
+                            {{ $voucherSuccess }}
+                        </p>
+                    @endif
+                @else
+                    <div class="flex gap-2">
+                        <input
+                            type="text"
+                            wire:model="voucherInput"
+                            wire:keydown.enter.prevent="applyVoucher"
+                            placeholder="Masukkan kode voucher"
+                            class="input input-bordered input-sm flex-1 rounded-xl font-mono uppercase text-xs focus:border-primary"
+                        />
+                        <button
+                            type="button"
+                            wire:click="applyVoucher"
+                            wire:loading.attr="disabled"
+                            wire:target="applyVoucher"
+                            class="btn btn-primary btn-sm rounded-xl px-4 text-xs font-bold"
+                        >
+                            <span wire:loading.remove wire:target="applyVoucher">Gunakan</span>
+                            <span wire:loading wire:target="applyVoucher" class="loading loading-spinner loading-xs"></span>
+                        </button>
+                    </div>
+
+                    @if($voucherError)
+                        <p class="text-xs text-error mt-2 font-medium flex items-center gap-1">
+                            <x-heroicon-o-exclamation-circle class="h-4 w-4 shrink-0" />
+                            {{ $voucherError }}
+                        </p>
+                    @endif
+                @endif
+            </section>
+
             {{-- Summary --}}
             <section class="rounded-[2rem] bg-base-100 p-4 shadow-sm">
                 <h2 class="mb-3 font-black">Ringkasan Pembayaran</h2>
@@ -502,6 +678,31 @@ new #[Title('Checkout')] class extends Component {
                         </span>
                     </div>
 
+                    @if($this->productDiscount > 0)
+                        <div class="flex justify-between text-success">
+                            <span>Diskon Produk</span>
+                            <span class="font-bold">
+                                - Rp {{ number_format($this->productDiscount, 0, ',', '.') }}
+                            </span>
+                        </div>
+                    @endif
+
+                    <div class="flex justify-between">
+                        <span class="text-base-content/60">Biaya Pengiriman</span>
+                        <span class="font-bold">
+                            Rp {{ number_format($this->shippingCost, 0, ',', '.') }}
+                        </span>
+                    </div>
+
+                    @if($this->shippingDiscount > 0)
+                        <div class="flex justify-between text-success">
+                            <span>Diskon Pengiriman</span>
+                            <span class="font-bold">
+                                - Rp {{ number_format($this->shippingDiscount, 0, ',', '.') }}
+                            </span>
+                        </div>
+                    @endif
+
                     <div class="flex justify-between">
                         <span class="text-base-content/60">Total Berat</span>
                         <span class="font-bold">
@@ -509,23 +710,9 @@ new #[Title('Checkout')] class extends Component {
                         </span>
                     </div>
 
-                    <div class="flex justify-between">
-                        <span class="text-base-content/60">Ongkir</span>
-                        <span class="font-bold">
-                            Rp {{ number_format($this->shippingCost, 0, ',', '.') }}
-                        </span>
-                    </div>
-
-                    <div class="flex justify-between">
-                        <span class="text-base-content/60">Diskon</span>
-                        <span class="font-bold">
-                            Rp {{ number_format($this->discount, 0, ',', '.') }}
-                        </span>
-                    </div>
-
                     <div class="border-t border-base-200 pt-2">
                         <div class="flex justify-between">
-                            <span class="font-black">Total</span>
+                            <span class="font-black">Total Pembayaran</span>
                             <span class="text-lg font-black text-primary">
                                 Rp {{ number_format($this->grandTotal, 0, ',', '.') }}
                             </span>

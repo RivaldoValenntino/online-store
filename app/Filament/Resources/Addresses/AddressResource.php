@@ -26,6 +26,11 @@ class AddressResource extends Resource
     protected static ?string $recordTitleAttribute = 'recipient_name';
     protected static string | UnitEnum | null $navigationGroup = 'Master';
     protected static bool $shouldRegisterNavigation = false;
+    protected static ?string $navigationLabel = 'Alamat';
+
+    protected static ?string $modelLabel = 'Alamat';
+
+    protected static ?string $pluralModelLabel = 'Alamat';
 
     public static function form(Schema $schema): Schema
     {

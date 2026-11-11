@@ -17,27 +17,62 @@ class MidtransWebhookController extends Controller
         ]);
 
         $serverKey = config('services.midtrans.server_key');
+        $signatureSecret = config('services.midtrans.signature_key') ?: $serverKey;
 
         $midtransOrderId = (string) $request->input('order_id');
         $statusCode = (string) $request->input('status_code');
         $grossAmount = (string) $request->input('gross_amount');
         $signatureKey = (string) $request->input('signature_key');
 
-        $validSignature = hash(
+        $transactionStatus = (string) $request->input('transaction_status');
+        $fraudStatus = (string) $request->input('fraud_status');
+
+        $validSignature1 = hash(
             'sha512',
             $midtransOrderId . $statusCode . $grossAmount . $serverKey
         );
+        $validSignature2 = hash(
+            'sha512',
+            $midtransOrderId . $statusCode . $grossAmount . $signatureSecret
+        );
 
-        if (! hash_equals($validSignature, $signatureKey)) {
+        $isSignatureValid = hash_equals($validSignature1, $signatureKey) || hash_equals($validSignature2, $signatureKey);
+
+        // Jika hash lokal tidak cocok (misal karena perbedaan Signature Secret Key di Midtrans),
+        // lakukan fallback verifikasi langsung ke API Midtrans (standar resmi SDK Midtrans).
+        if (!$isSignatureValid && !empty($serverKey)) {
+            try {
+                \Midtrans\Config::$serverKey = $serverKey;
+                \Midtrans\Config::$isProduction = (bool) config('services.midtrans.is_production');
+
+                $statusIdentifier = $request->input('transaction_id') ?: $midtransOrderId;
+                $statusResponse = \Midtrans\Transaction::status($statusIdentifier);
+
+                if (!empty($statusResponse->order_id)) {
+                    $isSignatureValid = true;
+                    $transactionStatus = (string) $statusResponse->transaction_status;
+                    $fraudStatus = (string) ($statusResponse->fraud_status ?? $fraudStatus);
+
+                    logger()->info('MIDTRANS SIGNATURE VERIFIED VIA API STATUS CHECK', [
+                        'order_id' => $midtransOrderId,
+                        'transaction_status' => $transactionStatus,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                logger()->warning('MIDTRANS API STATUS CHECK FAILED', [
+                    'order_id' => $midtransOrderId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if (!$isSignatureValid) {
             logger()->warning('MIDTRANS INVALID SIGNATURE', [
                 'order_id' => $midtransOrderId,
             ]);
 
             return response()->json(['message' => 'Invalid signature'], 403);
         }
-
-        $transactionStatus = (string) $request->input('transaction_status');
-        $fraudStatus = (string) $request->input('fraud_status');
 
         $baseOrderNumber = preg_replace('/-PAY-.+$/', '', $midtransOrderId);
 
@@ -48,7 +83,7 @@ class MidtransWebhookController extends Controller
             ->with(['items.product', 'items.variant'])
             ->first();
 
-        if (! $order) {
+        if (!$order) {
             logger()->warning('MIDTRANS ORDER NOT FOUND', [
                 'order_id' => $midtransOrderId,
             ]);

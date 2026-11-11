@@ -61,4 +61,23 @@ class Product extends Model
     {
         return $this->hasMany(ProductVariant::class);
     }
+
+    public function wishlists()
+    {
+        return $this->hasMany(Wishlist::class);
+    }
+
+    public function wishlistedBy()
+    {
+        return $this->belongsToMany(Customer::class, 'wishlists')->withTimestamps();
+    }
+
+    public function isWishlistedBy(?Customer $customer): bool
+    {
+        if (! $customer) {
+            return false;
+        }
+
+        return $this->wishlists()->where('customer_id', $customer->id)->exists();
+    }
 }

@@ -18,6 +18,7 @@ new #[Title('Product Detail')] class extends Component {
 
     public ?string $cartSuccessMessage = null;
     public bool $showLoginRequired = false;
+    public bool $isWishlisted = false;
     public int $qty = 1;
 
     public function mount(string $slug): void
@@ -35,6 +36,11 @@ new #[Title('Product Detail')] class extends Component {
         }
 
         $this->activeImage = $this->galleryImages()[0] ?? null;
+
+        $customer = Auth::guard('customer')->user();
+        if ($customer) {
+            $this->isWishlisted = $this->product->wishlists()->where('customer_id', $customer->id)->exists();
+        }
     }
 
     #[Computed]
@@ -261,6 +267,40 @@ new #[Title('Product Detail')] class extends Component {
 
         $this->dispatch('cart-updated', count: $this->cartCount());
     }
+
+    public function toggleWishlist(): void
+    {
+        $customer = Auth::guard('customer')->user();
+
+        if (! $customer) {
+            $this->showLoginRequired = true;
+            return;
+        }
+
+        $wishlist = $this->product->wishlists()->where('customer_id', $customer->id)->first();
+
+        if ($wishlist) {
+            $wishlist->delete();
+            $this->isWishlisted = false;
+            $this->dispatch('notify',
+                type: 'info',
+                title: 'Dihapus dari Wishlist',
+                message: 'Produk telah dihapus dari wishlist kamu.'
+            );
+        } else {
+            $this->product->wishlists()->create([
+                'customer_id' => $customer->id,
+            ]);
+            $this->isWishlisted = true;
+            $this->dispatch('notify',
+                type: 'success',
+                title: 'Berhasil Disimpan',
+                message: 'Produk berhasil disimpan ke wishlist.'
+            );
+        }
+
+        $this->dispatch('wishlist-updated');
+    }
 };
 ?>
 
@@ -282,6 +322,17 @@ new #[Title('Product Detail')] class extends Component {
             <a href="{{ route('store.home') }}" wire:navigate class="btn btn-circle btn-sm bg-base-100/90 shadow">
                 <x-heroicon-o-chevron-left class="h-5 w-5" />
             </a>
+        </div>
+
+        <div class="absolute right-4 top-4 z-20">
+            <button type="button" wire:click="toggleWishlist"
+                class="btn btn-circle btn-sm bg-base-100/90 shadow transition active:scale-90" aria-label="Wishlist">
+                @if ($isWishlisted)
+                    <x-heroicon-s-heart class="h-5 w-5 text-rose-500" />
+                @else
+                    <x-heroicon-o-heart class="h-5 w-5 text-base-content/70" />
+                @endif
+            </button>
         </div>
 
         <div class="aspect-square w-full bg-base-300">
@@ -495,7 +546,7 @@ new #[Title('Product Detail')] class extends Component {
                         <h3 class="text-lg font-black">Login dulu ya</h3>
 
                         <p class="mt-1 text-sm leading-relaxed text-base-content/60">
-                            Untuk menambahkan produk ke keranjang, kamu perlu login atau daftar akun terlebih dahulu.
+                            Untuk menambahkan produk ke keranjang atau wishlist, kamu perlu login atau daftar akun terlebih dahulu.
                         </p>
                     </div>
                 </div>

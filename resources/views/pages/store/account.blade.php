@@ -10,6 +10,16 @@ new #[Layout('layouts.app')] #[Title('Account')] class extends Component {
     {
         return Auth::guard('customer')->user();
     }
+
+    public function getWishlistCountProperty(): int
+    {
+        return $this->customer ? (int) $this->customer->wishlists()->count() : 0;
+    }
+
+    public function getUnreadNotificationCountProperty(): int
+    {
+        return $this->customer ? (int) $this->customer->unreadNotifications()->count() : 0;
+    }
 };
 ?>
 
@@ -31,8 +41,14 @@ new #[Layout('layouts.app')] #[Title('Account')] class extends Component {
         @auth('customer')
             <section class="rounded-[2rem] bg-base-100 p-5 shadow-sm">
                 <div class="flex items-center gap-4">
-                    <div class="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary/10 text-primary">
-                        <x-heroicon-o-user class="h-9 w-9" />
+                    <div
+                        class="flex h-16 w-16 items-center justify-center overflow-hidden rounded-3xl bg-primary/10 text-primary">
+                        @if ($this->customer->avatar)
+                            <img src="{{ $this->customer->avatar }}" alt="{{ $this->customer->name }}"
+                                class="h-full w-full object-cover" referrerpolicy="no-referrer">
+                        @else
+                            <x-heroicon-o-user class="h-9 w-9" />
+                        @endif
                     </div>
 
                     <div class="min-w-0 flex-1">
@@ -44,6 +60,9 @@ new #[Layout('layouts.app')] #[Title('Account')] class extends Component {
                             {{ $this->customer->email }}
                         </p>
 
+                        <p class="truncate text-sm text-base-content/60">
+                            {{ $this->customer->phone ?? '-' }}
+                        </p>
                         <div class="mt-2">
                             @if ($this->customer->hasVerifiedEmail())
                                 <span class="badge badge-success badge-sm gap-1">
@@ -85,6 +104,44 @@ new #[Layout('layouts.app')] #[Title('Account')] class extends Component {
                     <div class="flex-1">
                         <p class="font-bold">Pesanan Saya</p>
                         <p class="text-xs text-base-content/50">Lihat riwayat dan status pesanan</p>
+                    </div>
+                    <x-heroicon-o-chevron-right class="h-5 w-5 text-base-content/40" />
+                </a>
+
+                <a href="{{ route('store.notifications') }}" wire:navigate
+                    class="flex items-center gap-3 rounded-3xl bg-base-100 p-4 shadow-sm">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-100 text-blue-600">
+                        <x-heroicon-o-bell class="h-5 w-5" />
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <p class="font-bold">Notifikasi</p>
+                            @if ($this->unreadNotificationCount > 0)
+                                <span class="badge badge-primary badge-sm text-primary-content font-bold">
+                                    {{ $this->unreadNotificationCount }}
+                                </span>
+                            @endif
+                        </div>
+                        <p class="text-xs text-base-content/50">Pemberitahuan status pesanan</p>
+                    </div>
+                    <x-heroicon-o-chevron-right class="h-5 w-5 text-base-content/40" />
+                </a>
+
+                <a href="{{ route('store.wishlist') }}" wire:navigate
+                    class="flex items-center gap-3 rounded-3xl bg-base-100 p-4 shadow-sm">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
+                        <x-heroicon-o-heart class="h-5 w-5" />
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <p class="font-bold">Wishlist Saya</p>
+                            @if ($this->wishlistCount > 0)
+                                <span class="badge badge-error badge-sm text-white font-bold">
+                                    {{ $this->wishlistCount }}
+                                </span>
+                            @endif
+                        </div>
+                        <p class="text-xs text-base-content/50">Produk yang kamu simpan</p>
                     </div>
                     <x-heroicon-o-chevron-right class="h-5 w-5 text-base-content/40" />
                 </a>
@@ -181,7 +238,7 @@ new #[Layout('layouts.app')] #[Title('Account')] class extends Component {
                     </a>
 
                     <a href="{{ route('customer.register') }}" wire:navigate class="btn btn-outline rounded-full">
-                        Register
+                        Buat Akun
                     </a>
                 </div>
             </section>
