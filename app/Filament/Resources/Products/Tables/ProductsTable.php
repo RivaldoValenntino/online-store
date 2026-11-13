@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Products\Tables;
 
+use App\Models\Product;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
@@ -11,8 +12,10 @@ use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ProductsTable
 {
@@ -43,7 +46,8 @@ class ProductsTable
                     ->sortable(),
 
                 TextColumn::make('stock')
-                    ->label('Base Stock')
+                    ->label('Stok')
+                    ->description(fn(Product $record): string => "Ditahan: " . ((int)$record->reserved_stock) . " | Tersedia: " . ((int)$record->available_stock))
                     ->numeric()
                     ->sortable(),
 
@@ -100,6 +104,13 @@ class ProductsTable
                         1 => 'Active',
                         0 => 'Inactive',
                     ]),
+
+                Filter::make('low_stock')
+                    ->label('Stok Menipis / Kritis (<= 5)')
+                    ->query(fn(Builder $query): Builder => $query->where(function ($q) {
+                        $q->whereDoesntHave('variants')->whereRaw('(stock - COALESCE(reserved_stock, 0)) <= 5')
+                            ->orWhereHas('variants', fn($vq) => $vq->whereRaw('(stock - COALESCE(reserved_stock, 0)) <= 5'));
+                    })),
             ])
             ->recordActions([
                 ActionGroup::make([

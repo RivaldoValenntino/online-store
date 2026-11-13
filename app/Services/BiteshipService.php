@@ -97,11 +97,22 @@ class BiteshipService
             throw new \Exception('Alamat belum punya area ID atau kode pos Biteship.');
         }
 
+        $origin = \App\Models\StoreShippingLocation::getDefault();
+
+        $originContactName = $order->origin_contact_name ?: ($origin?->contact_name ?: config('services.biteship.origin_contact_name'));
+        $originContactPhone = $order->origin_contact_phone ?: ($origin?->contact_phone ?: config('services.biteship.origin_contact_phone'));
+        $originAddress = $order->origin_address ?: ($origin?->address ?: config('services.biteship.origin_address'));
+        $originAreaId = $order->origin_area_id ?: ($origin?->biteship_area_id ?: config('services.biteship.origin_area_id'));
+        $originPostalCode = $order->origin_postal_code ?: ($origin?->postal_code ?: config('services.biteship.origin_postal_code'));
+        $originLat = $order->origin_latitude ?: $origin?->latitude;
+        $originLng = $order->origin_longitude ?: $origin?->longitude;
+        $originNote = $order->origin_note ?: $origin?->courier_notes;
+
         $payload = [
-            'origin_contact_name' => config('services.biteship.origin_contact_name'),
-            'origin_contact_phone' => config('services.biteship.origin_contact_phone'),
-            'origin_address' => config('services.biteship.origin_address'),
-            'origin_area_id' => config('services.biteship.origin_area_id'),
+            'origin_contact_name' => $originContactName,
+            'origin_contact_phone' => $originContactPhone,
+            'origin_address' => $originAddress,
+            'origin_area_id' => $originAreaId,
 
             'destination_contact_name' => $order->recipient_name,
             'destination_contact_phone' => $order->recipient_phone,
@@ -125,6 +136,24 @@ class BiteshipService
                 ];
             })->values()->all(),
         ];
+
+        if ($originPostalCode) {
+            $payload['origin_postal_code'] = (int) $originPostalCode;
+        }
+
+        if ($originNote) {
+            $payload['origin_note'] = $originNote;
+        }
+
+        if ($originLat && $originLng) {
+            $payload['origin_latitude'] = (float) $originLat;
+            $payload['origin_longitude'] = (float) $originLng;
+        }
+
+        if (filled($address->latitude) && filled($address->longitude)) {
+            $payload['destination_latitude'] = (float) $address->latitude;
+            $payload['destination_longitude'] = (float) $address->longitude;
+        }
 
         logger()->info('BITESHIP CREATE ORDER PAYLOAD', [
             'order_id' => $order->id,

@@ -37,7 +37,24 @@ new #[Title('Keranjang')] class extends Component {
     #[Computed]
     public function subtotal(): float
     {
-        return (float) $this->items->sum(fn ($item) => $item->price * $item->qty);
+        return (float) $this->items->sum(function ($item) {
+            $price = $item->variant?->price ?? $item->product?->price ?? $item->price;
+            return (float) ($price * $item->qty);
+        });
+    }
+
+    #[Computed]
+    public function hasInactiveItems(): bool
+    {
+        return $this->items->contains(function ($item) {
+            if (! $item->product || ! $item->product->is_active) {
+                return true;
+            }
+            if ($item->variant && ! $item->variant->is_active) {
+                return true;
+            }
+            return false;
+        });
     }
 
     public function cartCount(): int
@@ -53,7 +70,7 @@ new #[Title('Keranjang')] class extends Component {
             return;
         }
 
-        $stock = (int) ($item->variant?->stock ?? $item->product?->stock ?? 0);
+        $stock = (int) ($item->variant?->available_stock ?? $item->product?->available_stock ?? 0);
 
         if ($item->qty >= $stock) {
             $this->message = 'Jumlah sudah mencapai stok tersedia.';
@@ -190,10 +207,12 @@ new #[Title('Keranjang')] class extends Component {
             @foreach ($this->items as $item)
             @php
             $image = $item->variant?->image ?: $item->product?->primaryImage?->image;
-            $stock = (int) ($item->variant?->stock ?? $item->product?->stock ?? 0);
+            $stock = (int) ($item->variant?->available_stock ?? $item->product?->available_stock ?? 0);
+            $unitPrice = (int) round((float) ($item->variant?->price ?? $item->product?->price ?? $item->price));
+            $isItemActive = ($item->product?->is_active ?? false) && ($item->variant ? ($item->variant->is_active ?? false) : true);
             @endphp
 
-            <div class="rounded-[2rem] bg-base-100 p-3 shadow-sm">
+            <div class="rounded-[2rem] bg-base-100 p-3 shadow-sm {{ ! $isItemActive ? 'opacity-60 border border-error/40' : '' }}">
                 <div class="flex gap-3">
                     <div class="h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-base-200">
                         @if ($image)
@@ -218,6 +237,10 @@ new #[Title('Keranjang')] class extends Component {
                                     {{ $item->variant->name }}
                                 </p>
                                 @endif
+
+                                @if (! $isItemActive)
+                                <span class="badge badge-error badge-xs mt-1">Produk Tidak Aktif</span>
+                                @endif
                             </div>
 
                             <button type="button" wire:click="removeItem({{ $item->id }})"
@@ -227,7 +250,7 @@ new #[Title('Keranjang')] class extends Component {
                         </div>
 
                         <p class="mt-2 font-black text-primary">
-                            Rp {{ number_format($item->price, 0, ',', '.') }}
+                            Rp {{ number_format($unitPrice, 0, ',', '.') }}
                         </p>
 
                         <div class="mt-3 flex items-center justify-between">
@@ -246,7 +269,7 @@ new #[Title('Keranjang')] class extends Component {
                                 </span>
 
                                 <button type="button" wire:click="incrementItem({{ $item->id }})"
-                                    class="btn btn-circle btn-outline btn-xs" @disabled($item->qty >= $stock)
+                                    class="btn btn-circle btn-outline btn-xs" @disabled($item->qty >= $stock || ! $isItemActive)
                                     >
                                     <x-heroicon-o-plus class="h-3 w-3" />
                                 </button>
@@ -258,7 +281,7 @@ new #[Title('Keranjang')] class extends Component {
                 <div class="mt-3 border-t border-base-200 pt-3 text-right">
                     <p class="text-xs text-base-content/50">Subtotal</p>
                     <p class="font-black">
-                        Rp {{ number_format($item->price * $item->qty, 0, ',', '.') }}
+                        Rp {{ number_format($unitPrice * $item->qty, 0, ',', '.') }}
                     </p>
                 </div>
             </div>
@@ -278,9 +301,15 @@ new #[Title('Keranjang')] class extends Component {
                 </p>
             </div>
 
+            @if ($this->hasInactiveItems)
+            <button type="button" disabled class="btn btn-error btn-outline rounded-full px-4 text-xs" title="Ada produk yang tidak aktif">
+                Ada Produk Nonaktif
+            </button>
+            @else
             <a href="{{ route('store.checkout') }}" wire:navigate class="btn btn-primary rounded-full px-6">
                 Checkout
             </a>
+            @endif
         </div>
     </div>
     @endif

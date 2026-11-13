@@ -13,6 +13,15 @@ return [
     | a conventional file to locate the various service credentials.
     |
     */
+    'apps' => [
+        'app_name' => env('APP_NAME', 'Podo Raos')
+    ],
+    'admin_basic_auth' => [
+        'enabled' => env('ADMIN_BASIC_AUTH_ENABLED', false),
+        'username' => env('ADMIN_BASIC_AUTH_USERNAME'),
+        'password' => env('ADMIN_BASIC_AUTH_PASSWORD'),
+        'realm' => env('ADMIN_BASIC_AUTH_REALM', 'Podo Raos Admin Area'),
+    ],
     'google' => [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
@@ -56,6 +65,17 @@ return [
         'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+    ],
+
+    'contact' => [
+        'cs_name' => env('CS_NAME', 'CS ' . env('APP_NAME', 'Podo Raos')),
+        'cs_phone' => env('CS_PHONE', env('WHATSAPP_CS_PHONE', '')),
+        'cs_is_active' => env('CS_IS_ACTIVE', true),
+        'homepage_title' => env('HOMEPAGE_CS_TITLE', 'Masih Bingung Memilih Produk?'),
+        'homepage_subtitle' => env('HOMEPAGE_CS_SUBTITLE', 'Butuh hampers khusus atau tanya stok?'),
+        'homepage_description' => env('HOMEPAGE_CS_DESCRIPTION', 'Konsultasikan kebutuhan oleh-oleh khas Garut atau pesanan dalam jumlah besar langsung dengan Customer Service kami.'),
+        'homepage_button_text' => env('HOMEPAGE_CS_BUTTON_TEXT', 'Hubungi CS via WhatsApp'),
+        'homepage_message' => env('HOMEPAGE_CS_MESSAGE', 'Halo Customer Service ' . env('APP_NAME', 'Podo Raos') . ', saya ingin bertanya seputar rekomendasi oleh-oleh khas Garut atau pesanan khusus.'),
     ],
 
     'slack' => [

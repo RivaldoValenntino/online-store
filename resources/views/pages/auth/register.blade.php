@@ -13,6 +13,7 @@ new #[Layout('layouts.auth')] #[Title('Register')] class extends Component {
     public string $phone = '';
     public string $password = '';
     public string $password_confirmation = '';
+    public bool $subscribeMarketing = true;
 
     public ?string $registerError = null;
     public ?string $registerSuccess = null;
@@ -87,6 +88,9 @@ new #[Layout('layouts.auth')] #[Title('Register')] class extends Component {
                 'email' => $validated['email'],
                 'phone' => $validated['phone'],
                 'password' => $validated['password'],
+                'email_marketing' => $this->subscribeMarketing,
+                'in_app_marketing' => $this->subscribeMarketing,
+                'unsubscribed_from_promos' => ! $this->subscribeMarketing,
                 'is_active' => true,
             ]);
 
@@ -243,6 +247,23 @@ new #[Layout('layouts.auth')] #[Title('Register')] class extends Component {
                     @enderror
                 </div>
             </div>
+
+            {{-- Opt-in Subscription Promosi & Voucher --}}
+            <div class="rounded-2xl border border-primary/20 bg-primary/5 p-3.5 my-2">
+                <label class="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" wire:model="subscribeMarketing" class="checkbox checkbox-primary checkbox-sm mt-0.5 rounded-lg" />
+                    <div class="text-xs">
+                        <span class="font-bold text-base-content flex items-center gap-1.5">
+                            <x-heroicon-o-ticket class="h-4 w-4 text-primary shrink-0" />
+                            Langganan Info Promo & Diskon Voucher
+                        </span>
+                        <span class="text-base-content/65 block mt-0.5">
+                            Dapatkan update voucher hemat, gratis ongkir, dan penawaran spesial via email & notifikasi akun.
+                        </span>
+                    </div>
+                </label>
+            </div>
+
             <button type="submit" wire:loading.attr="disabled" wire:target="register"
                 class="btn btn-primary w-full rounded-full mt-2">
                 <span wire:loading.remove wire:target="register">

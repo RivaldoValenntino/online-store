@@ -14,8 +14,8 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use App\Services\OrderCalculationService;
 use App\Services\MidtransService;
-// use App\Services\RajaOngkirService;
 use App\Services\ShippingService;
 new #[Title('Checkout')] class extends Component {
     public ?int $selectedAddressId = null;
@@ -79,78 +79,76 @@ new #[Title('Checkout')] class extends Component {
     }
 
     #[Computed]
+    public function calculation(): array
+    {
+        return app(OrderCalculationService::class)->calculate(
+            customer: $this->customer,
+            rawCartItems: $this->items,
+            address: $this->selectedAddress,
+            shippingKey: $this->selectedShippingKey,
+            voucherCode: $this->appliedVoucherCode
+        );
+    }
+
+    #[Computed]
     public function subtotal(): float
     {
-        return (float) $this->items->sum(fn($item) => $item->price * $item->qty);
+        return (float) ($this->calculation['subtotal'] ?? 0);
     }
 
     #[Computed]
     public function totalWeight(): int
     {
-        return (int) $this->items->sum(function ($item) {
-            $weight = $item->variant?->weight_gram ?? ($item->product?->weight_gram ?? 0);
-
-            return $weight * $item->qty;
-        });
+        return (int) ($this->calculation['total_weight'] ?? 0);
     }
 
     #[Computed]
     public function shippingCost(): float
     {
-        return (float) ($this->selectedShipping()['cost'] ?? 0);
+        return (float) ($this->calculation['shipping_cost'] ?? 0);
     }
 
     #[Computed]
     public function voucherValidation(): array
     {
-        if (! $this->appliedVoucherCode) {
-            return [
-                'valid' => false,
-                'message' => null,
-                'voucher' => null,
-                'product_discount' => 0.0,
-                'shipping_discount' => 0.0,
-                'total_discount' => 0.0,
-            ];
-        }
-
-        return app(VoucherService::class)->validateAndCalculate(
-            $this->appliedVoucherCode,
-            $this->customer,
-            $this->subtotal,
-            $this->shippingCost,
-            $this->items
-        );
+        return $this->calculation['voucher_result'] ?? [
+            'valid' => false,
+            'message' => null,
+            'voucher' => null,
+            'product_discount' => 0.0,
+            'shipping_discount' => 0.0,
+            'total_discount' => 0.0,
+        ];
     }
 
     #[Computed]
     public function appliedVoucher(): ?Voucher
     {
-        return $this->voucherValidation['voucher'] ?? null;
+        return $this->calculation['voucher'] ?? null;
     }
 
     #[Computed]
     public function productDiscount(): float
     {
-        return (float) ($this->voucherValidation['product_discount'] ?? 0);
+        return (float) ($this->calculation['product_discount'] ?? 0);
     }
 
     #[Computed]
     public function shippingDiscount(): float
     {
-        return (float) ($this->voucherValidation['shipping_discount'] ?? 0);
+        return (float) ($this->calculation['shipping_discount'] ?? 0);
     }
 
     #[Computed]
     public function discount(): float
     {
-        return (float) ($this->voucherValidation['total_discount'] ?? 0);
+        return (float) ($this->calculation['discount'] ?? 0);
     }
 
     #[Computed]
     public function grandTotal(): float
     {
-        return max(0, $this->subtotal + $this->shippingCost - $this->discount);
+        return (float) ($this->calculation['grand_total'] ?? 0);
     }
 
     public function applyVoucher(): void
@@ -198,11 +196,6 @@ new #[Title('Checkout')] class extends Component {
             ->implode(', ');
     }
 
-    public function makeOrderNumber(): string
-    {
-        return 'ORD-' . now()->format('YmdHis') . '-' . random_int(1000, 9999);
-    }
-
     public function placeOrder(): void
     {
         $this->checkoutError = null;
@@ -217,122 +210,32 @@ new #[Title('Checkout')] class extends Component {
             return;
         }
 
-        if (!$this->selectedShipping()) {
+        if (!$this->selectedShippingKey) {
             $this->checkoutError = 'Pilih jasa pengiriman terlebih dahulu.';
             return;
         }
+
         try {
-            $order = DB::transaction(function () {
-                $address = $this->selectedAddress;
-                $shipping = $this->selectedShipping();
-
-                $appliedVoucher = $this->appliedVoucher;
-                $productDiscount = $this->productDiscount;
-                $shippingDiscount = $this->shippingDiscount;
-                $totalDiscount = $this->discount;
-
-                $order = Order::create([
-                    'customer_id' => $this->customer->id,
-                    'address_id' => $address->id,
-                    'order_number' => $this->makeOrderNumber(),
-
-                    'subtotal' => $this->subtotal,
-                    'shipping_cost' => $this->shippingCost,
-                    'discount' => $totalDiscount,
-                    'product_discount' => $productDiscount,
-                    'shipping_discount' => $shippingDiscount,
-                    'voucher_id' => $appliedVoucher?->id,
-                    'voucher_code' => $appliedVoucher?->code,
-                    'voucher_discount_type' => $appliedVoucher?->type,
-                    'grand_total' => $this->grandTotal,
-
-                    'status' => 'pending_payment',
-                    'payment_status' => 'pending',
-                    'shipping_status' => 'pending',
-                    'payment_expires_at' => now()->addHours(24),
-                    'notes' => $this->notes ?: null,
-
-                    'recipient_name' => $address->recipient_name,
-                    'recipient_phone' => $address->recipient_phone,
-                    'shipping_address' => $this->shippingAddressText($address),
-
-                    'shipping_courier' => $shipping['code'],
-                    'shipping_service' => $shipping['service'],
-                    'shipping_service_name' => $shipping['service_name'] ?? ($shipping['name'] ?? null),
-                    'shipping_etd' => $shipping['etd'],
-                    'shipping_provider' => 'biteship',
-                ]);
-
-                if ($appliedVoucher) {
-                    app(VoucherService::class)->applyVoucherToOrder(
-                        $order,
-                        $appliedVoucher,
-                        $this->customer,
-                        $productDiscount,
-                        $shippingDiscount
-                    );
-                }
-                ExpireOrderJob::dispatch($order->id)->delay($order->payment_expires_at);
-                foreach ($this->items as $item) {
-                    if ($item->product_variant_id) {
-                        $variant = ProductVariant::query()->where('id', $item->product_variant_id)->lockForUpdate()->firstOrFail();
-
-                        if ($item->qty > $variant->stock) {
-                            throw new Exception('Stok varian "' . $variant->name . '" tidak mencukupi.');
-                        }
-
-                        $product = $item->product;
-
-                        OrderItem::create([
-                            'order_id' => $order->id,
-                            'product_id' => $item->product_id,
-                            'product_variant_id' => $variant->id,
-
-                            'product_name' => $product?->name ?? $item->product?->name,
-                            'variant_name' => $variant->name,
-                            'variant_sku' => $variant->sku,
-
-                            'price' => $item->price,
-                            'qty' => $item->qty,
-                            'weight_gram' => $variant->weight_gram,
-                            'subtotal' => $item->price * $item->qty,
-                        ]);
-
-                        $variant->decrement('stock', $item->qty);
-                    } else {
-                        $product = Product::query()->where('id', $item->product_id)->lockForUpdate()->firstOrFail();
-
-                        if ($item->qty > $product->stock) {
-                            throw new Exception('Stok produk "' . $product->name . '" tidak mencukupi.');
-                        }
-
-                        OrderItem::create([
-                            'order_id' => $order->id,
-                            'product_id' => $product->id,
-
-                            'product_name' => $product->name,
-
-                            'price' => $item->price,
-                            'qty' => $item->qty,
-                            'weight_gram' => $product->weight_gram,
-                            'subtotal' => $item->price * $item->qty,
-                        ]);
-
-                        $product->decrement('stock', $item->qty);
-                    }
-                }
-
-                $this->cart->items()->delete();
-
-                return $order;
-            });
+            $order = app(OrderCalculationService::class)->placeOrder(
+                customer: $this->customer,
+                address: $this->selectedAddress,
+                shippingKey: $this->selectedShippingKey,
+                voucherCode: $this->appliedVoucherCode,
+                notes: $this->notes ?: null
+            );
 
             $this->dispatch('cart-updated', count: 0);
-            session()->flash('flash.type', 'success');
-            session()->flash('flash.title', 'Order berhasil dibuat');
-            session()->flash('flash.message', 'Pesanan ' . $order->order_number . ' berhasil dibuat.');
 
-            // $this->redirectRoute('store.account', navigate: true);
+            // If grand_total == 0 (e.g. 100% free voucher), order is auto-paid
+            if ($order->grand_total <= 0) {
+                session()->flash('flash.type', 'success');
+                session()->flash('flash.title', 'Pesanan Berhasil');
+                session()->flash('flash.message', 'Pesanan ' . $order->order_number . ' lunas dengan voucher.');
+                $this->redirectRoute('store.orders.show', $order, navigate: true);
+                return;
+            }
+
+            // Create Midtrans Snap transaction
             $snap = app(MidtransService::class)->createSnapTransaction($order);
 
             $order->update([
@@ -341,15 +244,12 @@ new #[Title('Checkout')] class extends Component {
                 'midtrans_redirect_url' => $snap->redirect_url,
             ]);
 
-            $this->dispatch('cart-updated', count: 0);
-
-            // $this->redirect($snap->redirect_url);
             session()->flash('flash.type', 'success');
             session()->flash('flash.title', 'Order berhasil dibuat');
             session()->flash('flash.message', 'Pesanan ' . $order->order_number . ' berhasil dibuat. Silakan lanjutkan pembayaran.');
 
             $this->redirectRoute('store.orders.show', $order, navigate: true);
-        } catch (Throwable $e) {
+        } catch (\Throwable $e) {
             $this->checkoutError = $e->getMessage();
         }
     }
@@ -385,7 +285,12 @@ new #[Title('Checkout')] class extends Component {
         }
 
         try {
-            $this->shippingOptions = app(ShippingService::class)->rates(address: $this->selectedAddress, items: $this->items, totalWeight: $this->totalWeight);
+            $this->shippingOptions = app(OrderCalculationService::class)->getVerifiedShippingRates(
+                customer: $this->customer,
+                address: $this->selectedAddress,
+                totalWeight: $this->totalWeight,
+                cartItems: $this->items
+            );
         } catch (\Throwable $e) {
             report($e);
 
@@ -402,11 +307,17 @@ new #[Title('Checkout')] class extends Component {
     }
     public function selectedShipping(): ?array
     {
-        if (!$this->selectedShippingKey) {
+        if (!$this->selectedShippingKey || !$this->selectedAddress) {
             return null;
         }
 
-        return collect($this->shippingOptions)->firstWhere('key', $this->selectedShippingKey);
+        return app(OrderCalculationService::class)->findVerifiedShippingRate(
+            customer: $this->customer,
+            address: $this->selectedAddress,
+            totalWeight: $this->totalWeight,
+            cartItems: $this->items,
+            shippingKey: $this->selectedShippingKey
+        );
     }
 };
 ?>
@@ -576,7 +487,7 @@ new #[Title('Checkout')] class extends Component {
 
                                 <div class="mt-2 flex items-center justify-between">
                                     <p class="text-sm font-black text-primary">
-                                        Rp {{ number_format($item->price, 0, ',', '.') }}
+                                        Rp {{ number_format($item->variant?->price ?? $item->product?->price ?? $item->price, 0, ',', '.') }}
                                     </p>
 
                                     <p class="text-xs text-base-content/50">

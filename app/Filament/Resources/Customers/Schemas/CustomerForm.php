@@ -52,6 +52,21 @@ class CustomerForm
                     ])
                     ->columns(2)
                     ->columnSpanFull(),
+
+                Section::make('Preferensi Notifikasi & Marketing')
+                    ->schema([
+                        Toggle::make('email_marketing')
+                            ->label('Langganan Email Marketing (Newsletter & Promo Blast)')
+                            ->default(true)
+                            ->helperText('Jika dinonaktifkan, pelanggan tidak akan menerima email promo.'),
+
+                        Toggle::make('in_app_marketing')
+                            ->label('Notifikasi Promosi In-App (Lonceng Notifikasi)')
+                            ->default(true)
+                            ->helperText('Jika dinonaktifkan, pelanggan tidak akan menerima notifikasi lonceng promo.'),
+                    ])
+                    ->columns(2)
+                    ->columnSpanFull(),
             ]);
     }
 }

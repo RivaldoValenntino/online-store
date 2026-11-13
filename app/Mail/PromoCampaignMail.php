@@ -24,7 +24,10 @@ class PromoCampaignMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            from: new Address(config('mail.from.address'), config('mail.from.name', 'Sami Raos')),
+            from: new Address(
+                config('mail.from.address'),
+                config('mail.from.name', (string) (config('services.apps.app_name') ?: config('app.name', 'Podo Raos')))
+            ),
             subject: $this->campaign->subject ?: $this->campaign->title,
         );
     }

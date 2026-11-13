@@ -235,9 +235,9 @@ class VoucherService
             'valid' => true,
             'message' => 'Voucher "' . $voucher->name . '" berhasil digunakan!',
             'voucher' => $voucher,
-            'product_discount' => round($productDiscount, 2),
-            'shipping_discount' => round($shippingDiscount, 2),
-            'total_discount' => round($totalDiscount, 2),
+            'product_discount' => (float) round($productDiscount),
+            'shipping_discount' => (float) round($shippingDiscount),
+            'total_discount' => (float) round($totalDiscount),
         ];
     }
 

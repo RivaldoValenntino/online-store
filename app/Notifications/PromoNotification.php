@@ -4,10 +4,9 @@ namespace App\Notifications;
 
 use App\Models\PromoCampaign;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
-class PromoNotification extends Notification implements ShouldQueue
+class PromoNotification extends Notification
 {
     use Queueable;
 

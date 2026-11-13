@@ -108,6 +108,14 @@ class OrderResource extends Resource
                         default => 'gray',
                     }),
 
+                Tables\Columns\IconColumn::make('stock_admin_review_required')
+                    ->label('Review Stok')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-exclamation-triangle')
+                    ->trueColor('danger')
+                    ->falseIcon('')
+                    ->alignCenter(),
+
                 Tables\Columns\TextColumn::make('midtrans_order_id')
                     ->label('Payment Gateway')
                     ->formatStateUsing(fn($state) => filled($state) ? 'Midtrans' : '-')

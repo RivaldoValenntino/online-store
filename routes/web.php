@@ -25,7 +25,7 @@ Route::get('/admin/orders/{order}/invoice', function (Order $order) {
         ->setPaper('a4', 'portrait');
 
     return $pdf->stream("invoice-{$order->order_number}.pdf");
-})->middleware(['auth'])->name('admin.orders.invoice');
+})->middleware(['auth', \App\Http\Middleware\HttpBasicAuthMiddleware::class])->name('admin.orders.invoice');
 
 Route::livewire('/products', 'pages::store.products')
     ->name('store.products');
@@ -66,7 +66,10 @@ Route::get('/promos/unsubscribe/{token}', function ($token) {
         [$customerId, $hash] = explode('|', $decoded, 2);
         $customer = \App\Models\Customer::findOrFail($customerId);
         if ($hash === md5($customer->email . config('app.key'))) {
-            $customer->update(['unsubscribed_from_promos' => true]);
+            $customer->update([
+                'unsubscribed_from_promos' => true,
+                'email_marketing' => false,
+            ]);
             return view('pages.store.unsubscribed', compact('customer'));
         }
     } catch (\Throwable $e) {}
@@ -90,6 +93,9 @@ Route::livewire('/account/addresses/{id}/edit', 'pages::store.address-form')
 Route::livewire('/login', 'pages::auth.login')
     ->name('customer.login')
     ->middleware('guest:customer');
+
+Route::get('/auth/login', fn () => redirect()->route('customer.login'))
+    ->name('login');
 
 Route::livewire('/register', 'pages::auth.register')
     ->name('customer.register')

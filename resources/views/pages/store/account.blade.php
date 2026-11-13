@@ -6,6 +6,36 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Layout('layouts.app')] #[Title('Account')] class extends Component {
+    public bool $emailMarketing = true;
+    public bool $inAppMarketing = true;
+
+    public function mount(): void
+    {
+        if ($this->customer) {
+            $this->emailMarketing = $this->customer->canReceiveEmailMarketing();
+            $this->inAppMarketing = $this->customer->canReceiveInAppMarketing();
+        }
+    }
+
+    public function updatePreferences(): void
+    {
+        if (! $this->customer) {
+            return;
+        }
+
+        $this->customer->update([
+            'email_marketing' => $this->emailMarketing,
+            'in_app_marketing' => $this->inAppMarketing,
+            'unsubscribed_from_promos' => ! $this->emailMarketing,
+        ]);
+
+        $this->dispatch('notify',
+            type: 'success',
+            title: 'Preferensi Disimpan',
+            message: 'Pengaturan notifikasi promosi berhasil diperbarui.'
+        );
+    }
+
     public function getCustomerProperty()
     {
         return Auth::guard('customer')->user();
@@ -173,6 +203,93 @@ new #[Layout('layouts.app')] #[Title('Account')] class extends Component {
                     </div>
                     <x-heroicon-o-chevron-right class="h-5 w-5 text-base-content/40" />
                 </a>
+            </section>
+
+            {{-- Preferensi Notifikasi & Promosi --}}
+            <section class="mt-4 rounded-3xl bg-base-100 p-5 shadow-sm">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                        <x-heroicon-o-adjustments-horizontal class="h-5 w-5 text-primary" />
+                        <h3 class="font-bold text-sm">Preferensi Notifikasi & Promosi</h3>
+                    </div>
+                </div>
+                <p class="text-xs text-base-content/60 mb-4 leading-relaxed">
+                    Atur bagaimana Anda ingin menerima penawaran voucher dan info promo. Notifikasi status pesanan tetap selalu aktif.
+                </p>
+
+                <div class="space-y-3">
+                    {{-- Email Marketing Card --}}
+                    <div class="rounded-2xl border p-4 transition-all {{ $this->emailMarketing ? 'border-success/30 bg-success/5 shadow-xs' : 'border-base-200 bg-base-100' }}">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="flex items-start gap-3">
+                                <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 {{ $this->emailMarketing ? 'bg-success/15 text-success' : 'bg-base-200 text-base-content/40' }}">
+                                    <x-heroicon-o-envelope class="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-bold block text-base-content">Email Promosi</span>
+                                        @if ($this->emailMarketing)
+                                            <span class="badge badge-success text-white font-bold text-[10px] gap-1 px-2 py-0.5">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+                                                Aktif
+                                            </span>
+                                        @else
+                                            <span class="badge badge-ghost text-base-content/50 font-semibold text-[10px] px-2 py-0.5">
+                                                Nonaktif
+                                            </span>
+                                        @endif
+                                    </div>
+                                    <span class="text-xs text-base-content/60 block mt-1 leading-relaxed">
+                                        Menerima voucher diskon, potongan ongkir, dan newsletter via email.
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col items-end gap-1 shrink-0 pt-0.5">
+                                <input type="checkbox" wire:model.live="emailMarketing" wire:change="updatePreferences" class="toggle toggle-success toggle-md cursor-pointer" />
+                                <span class="text-[10px] font-black {{ $this->emailMarketing ? 'text-success' : 'text-base-content/40' }}">
+                                    {{ $this->emailMarketing ? 'ON' : 'OFF' }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- In-App Marketing Card --}}
+                    <div class="rounded-2xl border p-4 transition-all {{ $this->inAppMarketing ? 'border-success/30 bg-success/5 shadow-xs' : 'border-base-200 bg-base-100' }}">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="flex items-start gap-3">
+                                <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 {{ $this->inAppMarketing ? 'bg-success/15 text-success' : 'bg-base-200 text-base-content/40' }}">
+                                    <x-heroicon-o-bell class="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-bold block text-base-content">Notifikasi In-App</span>
+                                        @if ($this->inAppMarketing)
+                                            <span class="badge badge-success text-white font-bold text-[10px] gap-1 px-2 py-0.5">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+                                                Aktif
+                                            </span>
+                                        @else
+                                            <span class="badge badge-ghost text-base-content/50 font-semibold text-[10px] px-2 py-0.5">
+                                                Nonaktif
+                                            </span>
+                                        @endif
+                                    </div>
+                                    <span class="text-xs text-base-content/60 block mt-1 leading-relaxed">
+                                        Menerima pemberitahuan promo pada ikon lonceng akun Anda.
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col items-end gap-1 shrink-0 pt-0.5">
+                                <input type="checkbox" wire:model.live="inAppMarketing" wire:change="updatePreferences" class="toggle toggle-success toggle-md cursor-pointer" />
+                                <span class="text-[10px] font-black {{ $this->inAppMarketing ? 'text-success' : 'text-base-content/40' }}">
+                                    {{ $this->inAppMarketing ? 'ON' : 'OFF' }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <div class="mt-5">

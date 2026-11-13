@@ -204,17 +204,17 @@ new #[Title('Pesanan Saya')] class extends Component {
                     <a href="{{ route('store.orders.show', $order) }}" wire:navigate
                         class="block rounded-[2rem] bg-base-100 p-4 shadow-sm transition active:scale-[0.99]">
                         <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0">
+                            <div class="min-w-0 flex-1">
                                 <p class="text-xs text-base-content/50">
                                     {{ $order->created_at->locale('id')->translatedFormat('d F Y, H:i') }}
                                 </p>
 
-                                <h2 class="mt-1 truncate font-black">
+                                <h2 class="mt-1 truncate font-black text-sm sm:text-base">
                                     {{ $order->order_number }}
                                 </h2>
                             </div>
 
-                            <span class="badge {{ $this->statusBadgeClass($order) }} badge-sm shrink-0">
+                            <span class="badge {{ $this->statusBadgeClass($order) }} shrink-0 whitespace-nowrap text-xs font-bold py-2 px-2.5 h-auto leading-normal">
                                 {{ $this->statusText($order) }}
                             </span>
                         </div>

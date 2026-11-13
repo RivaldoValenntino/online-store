@@ -67,9 +67,52 @@ class Product extends Model
         return $this->hasMany(Wishlist::class);
     }
 
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
     public function wishlistedBy()
     {
         return $this->belongsToMany(Customer::class, 'wishlists')->withTimestamps();
+    }
+
+    public function reviews()
+    {
+        return $this->hasMany(ProductReview::class);
+    }
+
+    public function approvedReviews()
+    {
+        return $this->hasMany(ProductReview::class)->where('status', ProductReview::STATUS_APPROVED);
+    }
+
+    public function getRatingAverageAttribute(): float
+    {
+        if (isset($this->attributes['rating_avg'])) {
+            return (float) $this->attributes['rating_avg'];
+        }
+
+        return (float) round((float) $this->approvedReviews()->avg('rating'), 1);
+    }
+
+    public function getReviewsCountAttribute(): int
+    {
+        if (isset($this->attributes['reviews_count'])) {
+            return (int) $this->attributes['reviews_count'];
+        }
+
+        return (int) $this->approvedReviews()->count();
+    }
+
+    public function getRatingBreakdownAttribute(): array
+    {
+        return app(\App\Services\ProductReviewService::class)->getRatingBreakdown($this);
+    }
+
+    public function getAvailableStockAttribute(): int
+    {
+        return max(0, (int) $this->stock - (int) ($this->reserved_stock ?? 0));
     }
 
     public function isWishlistedBy(?Customer $customer): bool

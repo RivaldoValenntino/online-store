@@ -52,6 +52,40 @@ class DispatchPromoCampaignJob implements ShouldQueue
                 case PromoCampaign::AUDIENCE_NEW:
                     $query->whereDoesntHave('orders');
                     break;
+
+                case PromoCampaign::AUDIENCE_SUBSCRIBERS:
+                    $query->emailMarketingSubscribers();
+                    break;
+
+                case PromoCampaign::AUDIENCE_SPECIFIC:
+                    $targetIds = array_filter((array) ($campaign->target_customer_ids ?? []));
+                    $query->whereIn('id', $targetIds);
+                    break;
+
+                case PromoCampaign::AUDIENCE_ALL:
+                default:
+                    // Ambil semua pengguna terdaftar yang aktif
+                    break;
+            }
+
+            // Filter preferensi kanal: Hanya ambil user yang mengaktifkan setidaknya salah satu kanal yang dipilih pada campaign
+            $hasEmailChannel = $campaign->hasChannel(PromoCampaign::CHANNEL_EMAIL);
+            $hasInAppChannel = $campaign->hasChannel(PromoCampaign::CHANNEL_IN_APP);
+
+            if ($hasEmailChannel && !$hasInAppChannel) {
+                $query->emailMarketingSubscribers();
+            } elseif (!$hasEmailChannel && $hasInAppChannel) {
+                $query->inAppMarketingEnabled();
+            } elseif ($hasEmailChannel && $hasInAppChannel) {
+                $query->where(function ($q) {
+                    $q->where(function ($sub) {
+                        $sub->where(function ($sq) {
+                            $sq->whereNull('email_marketing')->orWhere('email_marketing', true);
+                        })->where('unsubscribed_from_promos', false);
+                    })->orWhere(function ($sub) {
+                        $sub->whereNull('in_app_marketing')->orWhere('in_app_marketing', true);
+                    });
+                });
             }
 
             $sentCount = 0;
@@ -60,13 +94,16 @@ class DispatchPromoCampaignJob implements ShouldQueue
             $query->chunkById(100, function ($customers) use ($campaign, &$sentCount, &$failedCount) {
                 foreach ($customers as $customer) {
                     try {
+                        $sentToCustomer = false;
+
                         // Email Channel
-                        if ($campaign->hasChannel(PromoCampaign::CHANNEL_EMAIL) && !$customer->unsubscribed_from_promos) {
+                        if ($campaign->hasChannel(PromoCampaign::CHANNEL_EMAIL) && $customer->canReceiveEmailMarketing()) {
                             Mail::to($customer->email)->queue(new PromoCampaignMail($campaign, $customer));
+                            $sentToCustomer = true;
                         }
 
                         // In-App Notification Channel
-                        if ($campaign->hasChannel(PromoCampaign::CHANNEL_IN_APP)) {
+                        if ($campaign->hasChannel(PromoCampaign::CHANNEL_IN_APP) && $customer->canReceiveInAppMarketing()) {
                             // Check idempotency: avoid duplicate notification for same campaign
                             $alreadyNotified = $customer->notifications()
                                 ->where('data->campaign_id', $campaign->id)
@@ -74,10 +111,13 @@ class DispatchPromoCampaignJob implements ShouldQueue
 
                             if (!$alreadyNotified) {
                                 $customer->notify(new PromoNotification($campaign));
+                                $sentToCustomer = true;
                             }
                         }
 
-                        $sentCount++;
+                        if ($sentToCustomer) {
+                            $sentCount++;
+                        }
                     } catch (Exception $e) {
                         $failedCount++;
                         Log::error("Gagal mengirim campaign #{$campaign->id} ke customer #{$customer->id}: " . $e->getMessage());

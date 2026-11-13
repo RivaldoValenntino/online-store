@@ -72,6 +72,11 @@ new #[Layout('layouts.auth')] #[Title('Login')] class extends Component {
 
         $customer = Auth::guard('customer')->user();
 
+        // Tampilkan prompt ajakan berlangganan promo jika belum pernah memilih
+        if (is_null($customer->email_marketing) && is_null($customer->in_app_marketing)) {
+            session()->flash('show_promo_subscribe_modal', true);
+        }
+
         session()->flash('flash.type', 'success');
         session()->flash('flash.title', 'Selamat datang kembali');
         session()->flash('flash.message', 'Halo ' . $customer->name . ', kamu berhasil masuk ke akun.');

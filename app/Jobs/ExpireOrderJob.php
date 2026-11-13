@@ -43,25 +43,7 @@ class ExpireOrderJob implements ShouldQueue
                 return;
             }
 
-            if (! $order->stock_restored_at) {
-                foreach ($order->items()->get() as $item) {
-                    if ($item->product_variant_id) {
-                        ProductVariant::query()
-                            ->whereKey($item->product_variant_id)
-                            ->lockForUpdate()
-                            ->increment('stock', $item->qty);
-
-                        continue;
-                    }
-
-                    if ($item->product_id) {
-                        Product::query()
-                            ->whereKey($item->product_id)
-                            ->lockForUpdate()
-                            ->increment('stock', $item->qty);
-                    }
-                }
-            }
+            app(\App\Services\StockReservationService::class)->release($order, 'expired');
 
             if ($order->voucher_id) {
                 VoucherUsage::where('order_id', $order->id)->delete();

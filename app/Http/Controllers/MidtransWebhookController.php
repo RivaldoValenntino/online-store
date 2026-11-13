@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Services\StockReservationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -91,6 +92,20 @@ class MidtransWebhookController extends Controller
             return response()->json(['message' => 'Order not found, ignored'], 200);
         }
 
+        // Security Hardening: Ensure paid gross_amount strictly matches order grand_total
+        $incomingGross = (int) round((float) $grossAmount);
+        $orderGrandTotal = (int) round((float) $order->grand_total);
+
+        if ($incomingGross !== $orderGrandTotal) {
+            logger()->warning('MIDTRANS WEBHOOK GROSS AMOUNT MISMATCH', [
+                'order_id' => $midtransOrderId,
+                'order_grand_total' => $orderGrandTotal,
+                'incoming_gross_amount' => $incomingGross,
+            ]);
+
+            return response()->json(['message' => 'Gross amount mismatch'], 400);
+        }
+
         DB::transaction(function () use ($order, $transactionStatus, $fraudStatus) {
             $order->refresh();
 
@@ -99,16 +114,29 @@ class MidtransWebhookController extends Controller
                 return;
             }
 
+            // Jika pesanan sudah kedaluwarsa, dibatalkan, atau reservasi sudah dilepas, tangani late payment
+            $isAlreadyCancelledOrExpired = in_array($order->payment_status, ['expired', 'cancelled'], true)
+                || in_array($order->status, ['expired', 'cancelled'], true)
+                || ! is_null($order->stock_released_at);
+
             if ($transactionStatus === 'capture') {
                 if ($fraudStatus === 'accept') {
-                    $this->markPaid($order);
+                    if ($isAlreadyCancelledOrExpired) {
+                        $this->handleLatePayment($order);
+                    } else {
+                        $this->markPaid($order);
+                    }
                 }
 
                 return;
             }
 
             if ($transactionStatus === 'settlement') {
-                $this->markPaid($order);
+                if ($isAlreadyCancelledOrExpired) {
+                    $this->handleLatePayment($order);
+                } else {
+                    $this->markPaid($order);
+                }
                 return;
             }
 
@@ -129,7 +157,7 @@ class MidtransWebhookController extends Controller
                     'shipping_status' => 'cancelled',
                 ]);
 
-                $this->restoreStock($order);
+                $this->restoreStock($order, 'expired');
                 return;
             }
 
@@ -144,7 +172,7 @@ class MidtransWebhookController extends Controller
                     'shipping_status' => 'cancelled',
                 ]);
 
-                $this->restoreStock($order);
+                $this->restoreStock($order, $transactionStatus);
             }
         });
 
@@ -157,40 +185,26 @@ class MidtransWebhookController extends Controller
             'status' => 'confirmed',
             'payment_status' => 'paid',
             'shipping_status' => 'waiting_shipment',
-            'paid_at' => now(),
+            'paid_at' => $order->paid_at ?? now(),
+        ]);
+
+        app(StockReservationService::class)->commit($order);
+    }
+
+    private function handleLatePayment(Order $order): void
+    {
+        $lateResult = app(StockReservationService::class)->handleLatePayment($order);
+
+        $order->update([
+            'payment_status' => 'paid',
+            'paid_at' => $order->paid_at ?? now(),
+            'notes' => trim(($order->notes ?? '') . ' [PERINGATAN: Pembayaran diterima setelah pesanan dibatalkan/kedaluwarsa. ' . ($lateResult['note'] ?? '') . ']'),
+            'stock_admin_review_required' => $lateResult['admin_review_required'] ?? false,
         ]);
     }
 
-    private function restoreStock(Order $order): void
+    private function restoreStock(Order $order, string $reason = 'cancelled'): void
     {
-        $order = Order::query()
-            ->whereKey($order->id)
-            ->with(['items'])
-            ->lockForUpdate()
-            ->firstOrFail();
-
-        if ($order->stock_restored_at) {
-            return;
-        }
-
-        foreach ($order->items as $item) {
-            if ($item->product_variant_id) {
-                ProductVariant::query()
-                    ->whereKey($item->product_variant_id)
-                    ->increment('stock', $item->qty);
-
-                continue;
-            }
-
-            if ($item->product_id) {
-                Product::query()
-                    ->whereKey($item->product_id)
-                    ->increment('stock', $item->qty);
-            }
-        }
-
-        $order->update([
-            'stock_restored_at' => now(),
-        ]);
+        app(StockReservationService::class)->release($order, $reason);
     }
 }

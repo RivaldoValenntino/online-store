@@ -26,6 +26,8 @@ class Customer extends Authenticatable implements MustVerifyEmailContract, CanRe
     protected $casts = [
         'is_active' => 'boolean',
         'unsubscribed_from_promos' => 'boolean',
+        'email_marketing' => 'boolean',
+        'in_app_marketing' => 'boolean',
         'email_verified_at' => 'datetime',
     ];
 
@@ -71,6 +73,11 @@ class Customer extends Authenticatable implements MustVerifyEmailContract, CanRe
     {
         return $this->belongsToMany(Product::class, 'wishlists')->withTimestamps();
     }
+
+    public function reviews()
+    {
+        return $this->hasMany(ProductReview::class);
+    }
     public function sendEmailVerificationNotification(): void
     {
         $this->notify(new CustomerVerifyEmailNotification);
@@ -79,5 +86,35 @@ class Customer extends Authenticatable implements MustVerifyEmailContract, CanRe
     public function sendPasswordResetNotification($token): void
     {
         $this->notify(new CustomerResetPasswordNotification($token));
+    }
+
+    public function canReceiveEmailMarketing(): bool
+    {
+        return $this->is_active
+            && (is_null($this->email_marketing) || $this->email_marketing)
+            && !$this->unsubscribed_from_promos;
+    }
+
+    public function canReceiveInAppMarketing(): bool
+    {
+        return $this->is_active
+            && (is_null($this->in_app_marketing) || $this->in_app_marketing);
+    }
+
+    public function scopeEmailMarketingSubscribers($query)
+    {
+        return $query->where('is_active', true)
+            ->where(function ($q) {
+                $q->whereNull('email_marketing')->orWhere('email_marketing', true);
+            })
+            ->where('unsubscribed_from_promos', false);
+    }
+
+    public function scopeInAppMarketingEnabled($query)
+    {
+        return $query->where('is_active', true)
+            ->where(function ($q) {
+                $q->whereNull('in_app_marketing')->orWhere('in_app_marketing', true);
+            });
     }
 }

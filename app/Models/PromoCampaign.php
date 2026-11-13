@@ -12,6 +12,7 @@ class PromoCampaign extends Model
 
     protected $casts = [
         'channels' => 'array',
+        'target_customer_ids' => 'array',
         'scheduled_at' => 'datetime',
         'sent_at' => 'datetime',
         'sent_count' => 'integer',
@@ -26,6 +27,19 @@ class PromoCampaign extends Model
     public const AUDIENCE_PURCHASED = 'purchased';
     public const AUDIENCE_NON_PURCHASED = 'non_purchased';
     public const AUDIENCE_NEW = 'new_users';
+    public const AUDIENCE_SUBSCRIBERS = 'subscribers';
+    public const AUDIENCE_SPECIFIC = 'specific';
+
+    public static function audienceOptions(): array
+    {
+        return [
+            self::AUDIENCE_ALL => 'Semua Pengguna Terdaftar (Sesuai Preferensi)',
+            self::AUDIENCE_PURCHASED => 'Pengguna yang Pernah Membeli (Repeat Buyer)',
+            self::AUDIENCE_NON_PURCHASED => 'Pengguna yang Belum Pernah Membeli',
+            self::AUDIENCE_SUBSCRIBERS => 'Khusus Pengguna yang Sudah Subscribe Email',
+            self::AUDIENCE_SPECIFIC => 'Pengguna Tertentu (Pilih Pelanggan)',
+        ];
+    }
 
     public const STATUS_DRAFT = 'draft';
     public const STATUS_SCHEDULED = 'scheduled';

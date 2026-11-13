@@ -47,14 +47,20 @@ class PromoCampaignForm
 
                         Select::make('target_audience')
                             ->label('Target Penerima')
-                            ->options([
-                                PromoCampaign::AUDIENCE_ALL => 'Semua Pengguna Terdaftar',
-                                PromoCampaign::AUDIENCE_PURCHASED => 'Pengguna yang Pernah Membeli (Repeat Buyer)',
-                                PromoCampaign::AUDIENCE_NON_PURCHASED => 'Pengguna yang Belum Pernah Membeli',
-                                PromoCampaign::AUDIENCE_NEW => 'Pengguna Baru',
-                            ])
+                            ->options(PromoCampaign::audienceOptions())
                             ->default(PromoCampaign::AUDIENCE_ALL)
+                            ->reactive()
                             ->required(),
+
+                        Select::make('target_customer_ids')
+                            ->label('Pilih Pelanggan Target')
+                            ->multiple()
+                            ->searchable()
+                            ->options(fn() => \App\Models\Customer::where('is_active', true)->pluck('name', 'id'))
+                            ->visible(fn($get) => $get('target_audience') === PromoCampaign::AUDIENCE_SPECIFIC)
+                            ->required(fn($get) => $get('target_audience') === PromoCampaign::AUDIENCE_SPECIFIC)
+                            ->helperText('Pilih akun pelanggan yang secara spesifik akan menerima campaign ini.')
+                            ->columnSpanFull(),
 
                         DateTimePicker::make('scheduled_at')
                             ->label('Jadwal Pengiriman (Opsional)')

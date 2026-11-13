@@ -3,6 +3,8 @@
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Product;
+use App\Models\ProductReview;
+use App\Services\ProductReviewService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Computed;
@@ -20,6 +22,9 @@ new #[Title('Product Detail')] class extends Component {
     public bool $showLoginRequired = false;
     public bool $isWishlisted = false;
     public int $qty = 1;
+
+    public int $ratingFilter = 0;
+    public int $reviewsLimit = 5;
 
     public function mount(string $slug): void
     {
@@ -106,7 +111,7 @@ new #[Title('Product Detail')] class extends Component {
         $selected[$optionId] = $valueId;
 
         return $this->product->variants->contains(function ($variant) use ($selected) {
-            if ((int) $variant->stock <= 0) {
+            if ((int) $variant->available_stock <= 0) {
                 return false;
             }
 
@@ -160,10 +165,10 @@ new #[Title('Product Detail')] class extends Component {
     public function displayStock(): int
     {
         if ($this->hasVariants()) {
-            return (int) ($this->selectedVariant?->stock ?? 0);
+            return (int) ($this->selectedVariant?->available_stock ?? 0);
         }
 
-        return (int) $this->product->stock;
+        return (int) $this->product->available_stock;
     }
 
     #[Computed]
@@ -216,13 +221,21 @@ new #[Title('Product Detail')] class extends Component {
             return;
         }
 
+        $this->qty = (int) max(1, $this->qty);
+
+        if (!$this->product->is_active) {
+            $this->addError('qty', 'Produk ini sedang dinonaktifkan.');
+            return;
+        }
+
         if ($this->hasVariants() && !$this->selectedVariant) {
             $this->addError('selectedVariantId', 'Pilih varian terlebih dahulu.');
             return;
         }
 
-        if ($this->qty < 1) {
-            $this->qty = 1;
+        if ($this->selectedVariant && !$this->selectedVariant->is_active) {
+            $this->addError('selectedVariantId', 'Varian ini sedang dinonaktifkan.');
+            return;
         }
 
         if ($this->displayStock <= 0) {
@@ -272,7 +285,7 @@ new #[Title('Product Detail')] class extends Component {
     {
         $customer = Auth::guard('customer')->user();
 
-        if (! $customer) {
+        if (!$customer) {
             $this->showLoginRequired = true;
             return;
         }
@@ -282,24 +295,90 @@ new #[Title('Product Detail')] class extends Component {
         if ($wishlist) {
             $wishlist->delete();
             $this->isWishlisted = false;
-            $this->dispatch('notify',
-                type: 'info',
-                title: 'Dihapus dari Wishlist',
-                message: 'Produk telah dihapus dari wishlist kamu.'
-            );
+            $this->dispatch('notify', type: 'info', title: 'Dihapus dari Wishlist', message: 'Produk telah dihapus dari wishlist kamu.');
         } else {
             $this->product->wishlists()->create([
                 'customer_id' => $customer->id,
             ]);
             $this->isWishlisted = true;
-            $this->dispatch('notify',
-                type: 'success',
-                title: 'Berhasil Disimpan',
-                message: 'Produk berhasil disimpan ke wishlist.'
-            );
+            $this->dispatch('notify', type: 'success', title: 'Berhasil Disimpan', message: 'Produk berhasil disimpan ke wishlist.');
         }
 
         $this->dispatch('wishlist-updated');
+    }
+
+    public function filterRating(int $stars): void
+    {
+        $this->ratingFilter = $stars;
+        $this->reviewsLimit = 5;
+    }
+
+    public function loadMoreReviews(): void
+    {
+        $this->reviewsLimit += 5;
+    }
+
+    #[Computed]
+    public function reviews()
+    {
+        try {
+            $query = $this->product
+                ->reviews()
+                ->approved()
+                ->with(['customer', 'images', 'reply'])
+                ->latest();
+
+            if ($this->ratingFilter > 0) {
+                $query->where('rating', $this->ratingFilter);
+            }
+
+            return $query->take($this->reviewsLimit)->get();
+        } catch (\Throwable $e) {
+            return collect();
+        }
+    }
+
+    #[Computed]
+    public function totalFilteredReviews(): int
+    {
+        try {
+            $query = $this->product->reviews()->approved();
+
+            if ($this->ratingFilter > 0) {
+                $query->where('rating', $this->ratingFilter);
+            }
+
+            return (int) $query->count();
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    #[Computed]
+    public function ratingBreakdown(): array
+    {
+        try {
+            return app(ProductReviewService::class)->getRatingBreakdown($this->product);
+        } catch (\Throwable $e) {
+            return [
+                'average' => 0.0,
+                'total' => 0,
+                'distribution' => [
+                    5 => ['count' => 0, 'percentage' => 0],
+                    4 => ['count' => 0, 'percentage' => 0],
+                    3 => ['count' => 0, 'percentage' => 0],
+                    2 => ['count' => 0, 'percentage' => 0],
+                    1 => ['count' => 0, 'percentage' => 0],
+                ],
+                'stars' => [
+                    5 => ['count' => 0, 'percentage' => 0],
+                    4 => ['count' => 0, 'percentage' => 0],
+                    3 => ['count' => 0, 'percentage' => 0],
+                    2 => ['count' => 0, 'percentage' => 0],
+                    1 => ['count' => 0, 'percentage' => 0],
+                ],
+            ];
+        }
     }
 };
 ?>
@@ -387,6 +466,20 @@ new #[Title('Product Detail')] class extends Component {
                 <h1 class="mt-1 text-2xl font-black leading-tight">
                     {{ $this->product->name }}
                 </h1>
+
+                <div class="mt-2 flex items-center gap-2">
+                    @if (($this->product->reviews_count ?? 0) > 0)
+                        <a href="#ulasan"
+                            class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-bold text-amber-500 hover:bg-amber-500/20 transition">
+                            <x-heroicon-s-star class="h-3.5 w-3.5 fill-current" />
+                            <span>{{ number_format($this->product->rating_avg ?? 0, 1) }}</span>
+                            <span class="text-base-content/50 font-normal">({{ $this->product->reviews_count }}
+                                ulasan)</span>
+                        </a>
+                    @else
+                        <span class="text-xs text-base-content/40">Belum ada ulasan</span>
+                    @endif
+                </div>
             </div>
         </div>
 
@@ -513,6 +606,206 @@ new #[Title('Product Detail')] class extends Component {
                 {!! $this->product->description ?: '<p>Belum ada deskripsi produk.</p>' !!}
             </div>
         </section>
+
+        {{-- Product Reviews Section --}}
+        <section id="ulasan" class="mt-8 border-t border-base-200 pt-6" x-data="{ previewPhoto: null }">
+            <div class="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-black text-base-content">Ulasan Pembeli</h2>
+                    <p class="text-xs text-base-content/60">Ulasan nyata dari pelanggan yang telah membeli produk ini
+                    </p>
+                </div>
+            </div>
+
+            {{-- Summary Card with Rating & Distribution --}}
+            <div class="rounded-3xl bg-base-200/60 p-4 sm:p-5 border border-base-200">
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+                    {{-- Big Average Score --}}
+                    <div
+                        class="sm:col-span-4 flex flex-col items-center justify-center text-center sm:border-r sm:border-base-300 sm:pr-4 py-2">
+                        <span class="text-4xl font-black text-base-content tracking-tight">
+                            {{ number_format($this->ratingBreakdown['average'], 1) }}
+                        </span>
+                        <div class="flex items-center gap-0.5 text-amber-400 mt-1">
+                            @for ($s = 1; $s <= 5; $s++)
+                                @if ($s <= round($this->ratingBreakdown['average']))
+                                    <x-heroicon-s-star class="h-4 w-4 fill-current" />
+                                @else
+                                    <x-heroicon-s-star class="h-4 w-4 text-base-content/20" />
+                                @endif
+                            @endfor
+                        </div>
+                        <span class="text-xs text-base-content/60 mt-1 font-medium">
+                            {{ $this->ratingBreakdown['total'] }} ulasan
+                        </span>
+                    </div>
+
+                    {{-- Distribution Bars --}}
+                    <div class="sm:col-span-8 space-y-1.5">
+                        @foreach ([5, 4, 3, 2, 1] as $star)
+                            @php
+                                $starData = $this->ratingBreakdown['stars'][$star] ?? ['count' => 0, 'percentage' => 0];
+                            @endphp
+                            <button type="button"
+                                wire:click="filterRating({{ $this->ratingFilter === $star ? 0 : $star }})"
+                                class="w-full flex items-center gap-2 group text-left transition hover:opacity-80">
+                                <span class="text-xs font-bold text-base-content/70 w-8 flex items-center gap-0.5">
+                                    {{ $star }} <x-heroicon-s-star
+                                        class="h-3 w-3 text-amber-400 fill-current inline" />
+                                </span>
+                                <div class="flex-1 h-2 rounded-full bg-base-300/80 overflow-hidden">
+                                    <div class="h-full bg-amber-400 rounded-full transition-all duration-300"
+                                        style="width: {{ $starData['percentage'] }}%"></div>
+                                </div>
+                                <span class="text-[11px] text-base-content/50 w-7 text-right font-medium">
+                                    {{ $starData['count'] }}
+                                </span>
+                            </button>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+
+            {{-- Filter Pills --}}
+            <div class="mt-4 flex flex-wrap gap-2">
+                <button type="button" wire:click="filterRating(0)"
+                    class="btn btn-xs rounded-full {{ $this->ratingFilter === 0 ? 'btn-primary' : 'btn-outline border-base-300 text-base-content/70' }}">
+                    Semua ({{ $this->product->reviews_count }})
+                </button>
+                @foreach ([5, 4, 3, 2, 1] as $star)
+                    @php
+                        $count = $this->ratingBreakdown['stars'][$star]['count'] ?? 0;
+                    @endphp
+                    <button type="button" wire:click="filterRating({{ $star }})"
+                        class="btn btn-xs rounded-full gap-1 {{ $this->ratingFilter === $star ? 'btn-primary' : 'btn-outline border-base-300 text-base-content/70' }}">
+                        <span>{{ $star }}</span>
+                        <x-heroicon-s-star
+                            class="h-3 w-3 fill-current {{ $this->ratingFilter === $star ? 'text-white' : 'text-amber-400' }}" />
+                        <span>({{ $count }})</span>
+                    </button>
+                @endforeach
+            </div>
+
+            {{-- Reviews List --}}
+            <div class="mt-4 space-y-3">
+                @forelse ($this->reviews as $review)
+                    <div class="rounded-3xl bg-base-100 p-4 border border-base-200/90 shadow-2xs space-y-3">
+                        {{-- Reviewer Info & Badge --}}
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="flex items-center gap-2.5">
+                                <div
+                                    class="h-9 w-9 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs uppercase">
+                                    {{ substr($review->customer?->name ?? 'P', 0, 1) }}
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h4 class="text-xs font-bold text-base-content">
+                                            {{ $review->customer_masked_name }}
+                                        </h4>
+                                        @if ($review->is_verified_purchase)
+                                            <span
+                                                class="badge badge-success badge-xs gap-1 text-[10px] font-semibold py-1 px-1.5">
+                                                <x-heroicon-s-check-badge class="h-3 w-3" /> Terverifikasi
+                                            </span>
+                                        @endif
+                                    </div>
+                                    <span class="text-[10px] text-base-content/50">
+                                        {{ $review->created_at->format('d M Y') }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {{-- Star Rating --}}
+                            <div class="flex items-center text-amber-400">
+                                @for ($i = 1; $i <= 5; $i++)
+                                    @if ($i <= $review->rating)
+                                        <x-heroicon-s-star class="h-3.5 w-3.5 fill-current" />
+                                    @else
+                                        <x-heroicon-s-star class="h-3.5 w-3.5 text-base-content/20" />
+                                    @endif
+                                @endfor
+                            </div>
+                        </div>
+
+                        {{-- Review Text --}}
+                        <p class="text-xs sm:text-sm text-base-content/80 leading-relaxed">
+                            {{ $review->review }}
+                        </p>
+
+                        {{-- Review Photos Gallery --}}
+                        @if ($review->images->isNotEmpty())
+                            <div class="flex flex-wrap gap-2 pt-1">
+                                @foreach ($review->images as $img)
+                                    <button type="button" @click="previewPhoto = '{{ $img->url }}'"
+                                        class="h-16 w-16 rounded-2xl overflow-hidden border border-base-300 hover:border-primary transition group relative">
+                                        <img src="{{ $img->url }}" alt="Foto Ulasan"
+                                            class="h-full w-full object-cover group-hover:scale-105 transition" />
+                                    </button>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        {{-- Official Store Reply Card --}}
+                        @if ($review->reply)
+                            <div class="rounded-2xl bg-base-200/80 border border-base-300/80 p-3.5 space-y-1.5 mt-2">
+                                <div class="flex items-center justify-between gap-2">
+                                    <div class="flex items-center gap-1.5 text-xs font-bold text-primary">
+                                        <x-heroicon-s-building-storefront class="h-4 w-4 shrink-0" />
+                                        <span>Respon Resmi dari {{ $review->reply->store_display_name }}</span>
+                                    </div>
+                                    <span class="text-[10px] text-base-content/50">
+                                        {{ $review->reply->created_at->diffForHumans() }}
+                                    </span>
+                                </div>
+                                <p class="text-xs text-base-content/80 leading-relaxed pl-5">
+                                    {{ $review->reply->reply }}
+                                </p>
+                            </div>
+                        @endif
+                    </div>
+                @empty
+                    <div class="rounded-3xl bg-base-100 p-8 text-center border border-base-200">
+                        <div
+                            class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-base-200 text-base-content/40">
+                            <x-heroicon-o-chat-bubble-bottom-center-text class="h-6 w-6" />
+                        </div>
+                        <h4 class="mt-3 text-sm font-bold text-base-content">
+                            {{ $this->ratingFilter > 0 ? 'Belum ada ulasan dengan ' . $this->ratingFilter . ' bintang' : 'Belum ada ulasan untuk produk ini' }}
+                        </h4>
+                        <p class="mt-1 text-xs text-base-content/50">
+                            Jadilah yang pertama memberikan ulasan setelah menyelesaikan pesanan produk ini!
+                        </p>
+                    </div>
+                @endforelse
+            </div>
+
+            {{-- Load More Button --}}
+            @if ($this->totalFilteredReviews > count($this->reviews))
+                <div class="mt-4 text-center">
+                    <button type="button" wire:click="loadMoreReviews" wire:loading.attr="disabled"
+                        class="btn btn-outline btn-sm rounded-full px-6 text-xs font-bold">
+                        <span wire:loading.remove wire:target="loadMoreReviews">Muat Lebih Banyak Ulasan</span>
+                        <span wire:loading wire:target="loadMoreReviews" class="flex items-center gap-2">
+                            <span class="loading loading-spinner loading-xs"></span> Memuat...
+                        </span>
+                    </button>
+                </div>
+            @endif
+
+            {{-- Lightbox Photo Preview Modal --}}
+            <div x-show="previewPhoto" x-cloak
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs"
+                @click.self="previewPhoto = null" @keydown.escape.window="previewPhoto = null">
+                <div class="relative max-w-lg w-full max-h-[85vh] flex flex-col items-center">
+                    <button type="button" @click="previewPhoto = null"
+                        class="btn btn-circle btn-sm bg-base-100/90 absolute -top-3 -right-3 z-10 shadow">
+                        ✕
+                    </button>
+                    <img :src="previewPhoto" alt="Preview Foto Ulasan"
+                        class="rounded-3xl object-contain max-h-[80vh] shadow-2xl border border-white/10" />
+                </div>
+            </div>
+        </section>
     </main>
 
     {{-- Sticky bottom action --}}
@@ -546,7 +839,8 @@ new #[Title('Product Detail')] class extends Component {
                         <h3 class="text-lg font-black">Login dulu ya</h3>
 
                         <p class="mt-1 text-sm leading-relaxed text-base-content/60">
-                            Untuk menambahkan produk ke keranjang atau wishlist, kamu perlu login atau daftar akun terlebih dahulu.
+                            Untuk menambahkan produk ke keranjang atau wishlist, kamu perlu login atau daftar akun
+                            terlebih dahulu.
                         </p>
                     </div>
                 </div>

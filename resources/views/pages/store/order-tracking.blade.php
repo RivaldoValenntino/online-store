@@ -153,7 +153,7 @@ new #[Title('Tracking Pesanan')] class extends Component {
         return match ($status) {
             'pending' => 'Menunggu Diproses',
             'waiting_shipment' => 'Menunggu Pengiriman',
-            'processed', 'confirmed', 'allocated', 'scheduled', 'picking_up', 'courier_allocated', 'on_process', 'on_progress', 'dropping_off' => 'Diproses Biteship',
+            'processed', 'confirmed', 'allocated', 'scheduled', 'picking_up', 'courier_allocated', 'on_process', 'on_progress', 'dropping_off' => 'Diproses Ekspedisi',
             'shipped', 'pickup', 'picked', 'picked_up', 'in_transit' => 'Dalam Pengiriman',
             'delivered', 'done', 'completed' => 'Terkirim',
             'cancelled', 'canceled' => 'Dibatalkan',
@@ -263,14 +263,15 @@ new #[Title('Tracking Pesanan')] class extends Component {
 
         <section class="rounded-[2rem] bg-base-100 p-4 shadow-sm">
             <div class="flex items-start justify-between gap-3">
-                <div>
+                <div class="min-w-0 flex-1">
                     <p class="text-xs text-base-content/50">Status Paket</p>
-                    <h2 class="mt-1 text-xl font-black">
+                    <h2 class="mt-1 text-lg sm:text-xl font-black">
                         {{ $tracking['status_label'] ?? '-' }}
                     </h2>
                 </div>
 
-                <span class="badge {{ $this->statusBadgeClass($tracking['status'] ?? null) }}">
+                <span
+                    class="badge {{ $this->statusBadgeClass($tracking['status'] ?? null) }} shrink-0 whitespace-nowrap text-xs font-bold py-2 px-2.5 h-auto leading-normal">
                     {{ strtoupper(str_replace('_', ' ', $tracking['status'] ?? '-')) }}
                 </span>
             </div>
@@ -291,7 +292,7 @@ new #[Title('Tracking Pesanan')] class extends Component {
                 <div class="mt-4 rounded-2xl bg-warning/10 p-3 text-sm text-warning">
                     <div class="flex gap-2">
                         <x-heroicon-o-clock class="h-5 w-5 shrink-0" />
-                        <p class="font-medium">Pesanan belum dikirim ke Biteship oleh admin.</p>
+                        <p class="font-medium">Pesanan sedang diproses untuk dikirim.</p>
                     </div>
                 </div>
             @endif

@@ -29,6 +29,12 @@ class Order extends Model
         'shipment_created_at' => 'datetime',
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
+        'stock_reserved_at' => 'datetime',
+        'stock_deducted_at' => 'datetime',
+        'stock_released_at' => 'datetime',
+        'stock_admin_review_required' => 'boolean',
+        'origin_latitude' => 'float',
+        'origin_longitude' => 'float',
     ];
     public function voucher()
     {
@@ -63,5 +69,16 @@ class Order extends Model
     public function shipment()
     {
         return $this->hasOne(Shipment::class);
+    }
+
+    public function reviews()
+    {
+        return $this->hasMany(ProductReview::class);
+    }
+
+    public function canBeReviewed(): bool
+    {
+        return in_array($this->status, ['completed', 'delivered'], true)
+            || $this->shipping_status === 'delivered';
     }
 }

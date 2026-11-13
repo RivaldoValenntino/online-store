@@ -33,6 +33,11 @@ class ProductVariant extends Model
         });
     }
 
+    public function getAvailableStockAttribute(): int
+    {
+        return max(0, (int) $this->stock - (int) ($this->reserved_stock ?? 0));
+    }
+
     public function product()
     {
         return $this->belongsTo(Product::class);

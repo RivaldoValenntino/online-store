@@ -10,14 +10,14 @@ class PromoCampaignService
 {
     public function dispatchNow(PromoCampaign $campaign): void
     {
-        DispatchPromoCampaignJob::dispatch($campaign->id);
+        DispatchPromoCampaignJob::dispatchSync($campaign->id);
     }
 
     public function renderEmailPreview(PromoCampaign $campaign, ?Customer $customer = null): string
     {
         $previewCustomer = $customer ?? new Customer([
             'id' => 9999,
-            'name' => 'Pelanggan Setia Sami Raos',
+            'name' => 'Pelanggan Setia ' . (config('services.apps.app_name') ?: config('app.name', 'Podo Raos')),
             'email' => 'pelanggan@example.com',
         ]);
 

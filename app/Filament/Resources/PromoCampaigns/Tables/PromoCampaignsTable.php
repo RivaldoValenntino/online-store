@@ -51,6 +51,8 @@ class PromoCampaignsTable
                         'purchased' => 'Pernah Beli',
                         'non_purchased' => 'Belum Beli',
                         'new_users' => 'User Baru',
+                        'subscribers' => 'Subscribers Email',
+                        'specific' => 'User Tertentu',
                         default => $state,
                     })
                     ->badge(),
@@ -111,10 +113,11 @@ class PromoCampaignsTable
                     ->visible(fn (PromoCampaign $record) => $record->status !== PromoCampaign::STATUS_COMPLETED && $record->status !== PromoCampaign::STATUS_SENDING)
                     ->action(function (PromoCampaign $record) {
                         app(PromoCampaignService::class)->dispatchNow($record);
+                        $record->refresh();
 
                         Notification::make()
-                            ->title('Pengiriman Campaign Dimulai')
-                            ->body('Job antrean berhasil dibuat. Email dan notifikasi sedang diproses di background.')
+                            ->title('Pengiriman Campaign Selesai')
+                            ->body("Berhasil memproses blast campaign ke {$record->sent_count} pelanggan.")
                             ->success()
                             ->send();
                     }),
